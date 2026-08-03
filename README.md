@@ -104,14 +104,19 @@ Token được lưu lại kể cả khi refresh trang.
 | ---- | ------ | ------- |
 | **Auth** | `/auth` | Đăng ký, đăng nhập, refresh, logout, verify email, quên/đặt lại mật khẩu |
 | **Users** | `/users` | Hồ sơ cá nhân (`/users/me`); admin xem danh sách user |
-| **Products** | `/products` | Duyệt công khai; tạo/sửa/xóa cần quyền admin |
-| **Categories** | `/categories` | Danh mục sản phẩm |
-| **Brands** | `/brands` | Thương hiệu |
+| **Products** | `/products` | Duyệt công khai; tạo/sửa/xóa cần quyền admin. Định danh bằng **slug** (`/products/ao-thun-nam`), lọc theo danh mục qua `/products/category/<category-slug>` |
+| **Categories** | `/categories` | Danh mục sản phẩm, định danh bằng **slug** |
+| **Brands** | `/brands` | Thương hiệu, định danh bằng **slug** |
 | **Carts** | `/carts` | Giỏ hàng theo user (thêm/sửa/xóa item) |
-| **Orders** | `/orders` | Đặt hàng từ giỏ (`/orders/checkout`), xem/hủy đơn; admin quản lý trạng thái |
+| **Promotions** | `/promotions` | Mã giảm giá: admin CRUD; user xem mã đang chạy (`/promotions/active`) và thử mã trên giỏ (`/promotions/apply`) |
+| **Orders** | `/orders` | Đặt hàng từ giỏ (`/orders/checkout`, kèm `promotionCode` nếu có), xem/hủy đơn; admin quản lý trạng thái |
 | **Uploads** | `/upload/image` | Upload ảnh (multipart, field `file`); ảnh phục vụ tại `/uploads/<filename>` |
 
 **Phân quyền**: `PUBLIC` (không cần token) · `USER` (cần đăng nhập) · `ADMIN` (token có `role = admin`).
+
+> **Định danh bằng slug**: Products / Categories / Brands dùng `slug` trên URL thay cho `_id`
+> (thân thiện SEO, không lộ id nội bộ). Khi sửa, slug trên URL là slug **hiện tại** của bản ghi —
+> body có thể chứa slug mới. `_id` vẫn là khóa thật trong DB và là thứ cart/order tham chiếu tới.
 
 ---
 
@@ -132,6 +137,23 @@ npm run lint         # ESLint + Prettier (tự fix)
 npm run format       # Format code bằng Prettier
 ```
 
+### Script dữ liệu (chạy một lần, sau khi deploy code mới)
+
+```bash
+npm run migrate:objectid   # chuyển các field tham chiếu đang lưu dạng chuỗi sang ObjectId
+npm run backfill:slugs     # sinh slug cho document còn thiếu (nếu không có sẽ không truy cập được qua API)
+```
+
+Cả hai script đều hỗ trợ `--dry-run` để xem trước mà không ghi gì:
+
+```bash
+node scripts/migrate-objectid-refs.js --dry-run
+node scripts/backfill-slugs.js --dry-run
+```
+
+Chạy lại nhiều lần đều an toàn (chỉ đụng vào document thực sự cần sửa). Nếu có nhiều
+môi trường (dev/staging/production) thì phải chạy trên **từng** database.
+
 ---
 
 ## 9. Cấu trúc thư mục
@@ -146,6 +168,7 @@ src/
 │   ├── categories/    # Danh mục
 │   ├── brands/        # Thương hiệu
 │   ├── carts/         # Giỏ hàng
+│   ├── promotions/    # Mã giảm giá
 │   ├── orders/        # Đơn hàng
 │   ├── uploads/       # Upload ảnh
 │   └── mail/          # Gửi email

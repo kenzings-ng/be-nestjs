@@ -10,7 +10,8 @@ import { Model, Types } from 'mongoose';
 import { UserRole } from '../users/schema/user.schema';
 import { Product } from '../products/schema/product.schema';
 import { CartsService } from '../carts/carts.service';
-import { Order, OrderStatus } from './schema/order.schema';
+import { PromotionsService } from '../promotions/promotions.service';
+import { Order, OrderPromotion, OrderStatus } from './schema/order.schema';
 import { CheckoutDto } from './dto/checkout.dto';
 
 @Injectable()
@@ -19,14 +20,17 @@ export class OrdersService {
     @InjectModel(Order.name) private readonly orderModel: Model<Order>,
     @InjectModel(Product.name) private readonly productModel: Model<Product>,
     private readonly cartsService: CartsService,
+    private readonly promotionsService: PromotionsService,
   ) {}
 
   /**
    * Turn the user's current cart into an order:
    *  1. read the cart and reject if empty
    *  2. snapshot each item's name + price
-   *  3. validate & decrement product stock (rolled back on any failure)
-   *  4. persist the order and clear the cart
+   *  3. validate the promotion code (if any) against the cart subtotal
+   *  4. validate & decrement product stock (rolled back on any failure)
+   *  5. claim one promotion redemption (also rolled back on failure)
+   *  6. persist the order and clear the cart
    */
   async checkout(userId: string, dto: CheckoutDto) {
     const cart = await this.cartsService.getRawCart(userId);
@@ -61,6 +65,25 @@ export class OrdersService {
       };
     });
 
+    const subtotal = orderItems.reduce((sum, i) => sum + i.subtotal, 0);
+
+    // Checked before any stock is touched so an invalid code fails cheaply.
+    let promotion: OrderPromotion | undefined;
+    if (dto.promotionCode) {
+      const check = await this.promotionsService.validateForOrder(
+        dto.promotionCode,
+        userId,
+        subtotal,
+      );
+      promotion = {
+        promotionId: check.promotion._id,
+        code: check.promotion.code,
+        discountType: check.promotion.discountType,
+        discountValue: check.promotion.discountValue,
+        discountAmount: check.discount,
+      };
+    }
+
     // Decrement stock atomically per item; roll back if any line loses a race.
     const decremented: Array<{ productId: Types.ObjectId; quantity: number }> =
       [];
@@ -80,14 +103,38 @@ export class OrdersService {
       decremented.push({ productId: item.productId, quantity: item.quantity });
     }
 
-    const totalPrice = orderItems.reduce((sum, i) => sum + i.subtotal, 0);
-    const order = await this.orderModel.create({
-      userId: new Types.ObjectId(userId),
-      items: orderItems,
-      totalPrice,
-      status: OrderStatus.PENDING,
-      shippingAddress: dto.shippingAddress,
-    });
+    // Claim the redemption before writing the order: the usage limit is enforced
+    // inside the update query, so a code on its last use can't be double-spent.
+    if (promotion) {
+      try {
+        await this.promotionsService.consume(promotion.promotionId);
+      } catch (err) {
+        await this.restock(decremented);
+        throw err;
+      }
+    }
+
+    const discount = promotion?.discountAmount ?? 0;
+    let order: Order;
+    try {
+      order = await this.orderModel.create({
+        userId: new Types.ObjectId(userId),
+        items: orderItems,
+        subtotal,
+        discount,
+        promotion,
+        totalPrice: subtotal - discount,
+        status: OrderStatus.PENDING,
+        shippingAddress: dto.shippingAddress,
+      });
+    } catch (err) {
+      // Nothing was persisted — give back both the stock and the redemption.
+      if (promotion) {
+        await this.promotionsService.release(promotion.promotionId);
+      }
+      await this.restock(decremented);
+      throw err;
+    }
 
     await this.cartsService.clearCart(userId);
     return order;
@@ -124,6 +171,11 @@ export class OrdersService {
         quantity: i.quantity,
       })),
     );
+    // Cancelling frees the coupon again (the per-user count ignores cancelled
+    // orders, so this only has to undo the global usedCount).
+    if (order.promotion) {
+      await this.promotionsService.release(order.promotion.promotionId);
+    }
     order.status = OrderStatus.CANCELLED;
     await order.save();
     return order;

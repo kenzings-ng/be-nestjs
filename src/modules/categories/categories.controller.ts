@@ -31,21 +31,24 @@ export class CategoriesController {
     return this.categoriesService.findAll();
   }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.categoriesService.findOne(id);
+  @Get(':slug')
+  findOne(@Param('slug') slug: string) {
+    return this.categoriesService.findOne(slug);
   }
 
-  @Patch(':id')
+  // Slug trên URL là slug HIỆN TẠI của danh mục (body có thể đổi sang slug mới).
+  @Patch(':slug')
+  @UseGuards(AdminGuard)
   update(
-    @Param('id') id: string,
+    @Param('slug') slug: string,
     @Body() updateCategoryDto: Partial<UpdateCategoryDto>,
   ) {
-    return this.categoriesService.update(id, updateCategoryDto);
+    return this.categoriesService.update(slug, updateCategoryDto);
   }
 
-  @Delete(':id')
-  delete(@Param('id') id: string) {
-    return this.categoriesService.delete(id);
+  @Delete(':slug')
+  @UseGuards(AdminGuard)
+  delete(@Param('slug') slug: string) {
+    return this.categoriesService.delete(slug);
   }
 }

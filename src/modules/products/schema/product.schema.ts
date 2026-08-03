@@ -1,9 +1,12 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { Document, SchemaTypes, Types } from 'mongoose';
 
 @Schema({ timestamps: true })
 export class Product extends Document {
-  @Prop({ type: Types.ObjectId, ref: 'Category', required: false })
+  // NOTE: dùng SchemaTypes.ObjectId (không phải Types.ObjectId) — chỉ SchemaTypes
+  // mới khai báo path là ObjectId thật; Types.ObjectId khiến path thành Mixed
+  // nên Mongoose không cast string sang ObjectId khi query.
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'Category', required: false })
   categoryId?: Types.ObjectId;
 
   @Prop({ required: true, unique: true })
