@@ -34,33 +34,33 @@ export class ProductsController {
     return this.productsService.findAll();
   }
 
-  // Logged-in users only: view a single product
-  @Get(':id')
+  // Public: browse products by category slug. Khai báo trước ':slug' là cố ý.
+  @Get('category/:categorySlug')
+  findByCategory(@Param('categorySlug') categorySlug: string) {
+    return this.productsService.findByCategory(categorySlug);
+  }
+
+  // Logged-in users only: view a single product by slug
+  @Get(':slug')
   @UseGuards(JwtAuthGuard)
-  findOne(@Param('id') id: string) {
-    return this.productsService.findOne(id);
+  findOne(@Param('slug') slug: string) {
+    return this.productsService.findOne(slug);
   }
 
-  // Public: browse products by category
-  @Get('category/:categoryId')
-  findByCategory(@Param('categoryId') categoryId: string) {
-    return this.productsService.findByCategory(categoryId);
-  }
-
-  // Admin only: update products
-  @Put(':id')
+  // Admin only: update products (slug trên URL là slug HIỆN TẠI của sản phẩm)
+  @Put(':slug')
   @UseGuards(AdminGuard)
   update(
-    @Param('id') id: string,
+    @Param('slug') slug: string,
     @Body() updateProductDto: Partial<UpdateProductDto>,
   ) {
-    return this.productsService.update(id, updateProductDto);
+    return this.productsService.update(slug, updateProductDto);
   }
 
   // Admin only: delete products
-  @Delete(':id')
+  @Delete(':slug')
   @UseGuards(AdminGuard)
-  delete(@Param('id') id: string) {
-    return this.productsService.delete(id);
+  delete(@Param('slug') slug: string) {
+    return this.productsService.delete(slug);
   }
 }

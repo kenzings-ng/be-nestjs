@@ -6,39 +6,53 @@ import {
   Patch,
   Param,
   Delete,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { BrandsService } from './brands.service';
 import { CreateBrandDto } from './dto/create-brand.dto';
 import { UpdateBrandDto } from './dto/update-brand.dto';
+import { AdminGuard } from '../auth/guards/admin.guard';
 
 @ApiTags('brands')
+@ApiBearerAuth('access-token')
 @Controller('brands')
 export class BrandsController {
   constructor(private readonly brandsService: BrandsService) {}
 
+  // Admin: tạo thương hiệu.
   @Post()
+  @UseGuards(AdminGuard)
   create(@Body() createBrandDto: CreateBrandDto) {
     return this.brandsService.create(createBrandDto);
   }
 
+  // Public: danh sách thương hiệu.
   @Get()
   findAll() {
     return this.brandsService.findAll();
   }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.brandsService.findOne(+id);
+  // Public: một thương hiệu theo slug.
+  @Get(':slug')
+  findOne(@Param('slug') slug: string) {
+    return this.brandsService.findOne(slug);
   }
 
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateBrandDto: UpdateBrandDto) {
-    return this.brandsService.update(+id, updateBrandDto);
+  // Admin: cập nhật (slug trên URL là slug HIỆN TẠI của thương hiệu).
+  @Patch(':slug')
+  @UseGuards(AdminGuard)
+  update(
+    @Param('slug') slug: string,
+    @Body() updateBrandDto: Partial<UpdateBrandDto>,
+  ) {
+    return this.brandsService.update(slug, updateBrandDto);
   }
 
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.brandsService.remove(+id);
+  // Admin: xóa.
+  @Delete(':slug')
+  @UseGuards(AdminGuard)
+  remove(@Param('slug') slug: string) {
+    return this.brandsService.remove(slug);
   }
 }

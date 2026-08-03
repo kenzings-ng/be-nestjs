@@ -30,7 +30,7 @@ async function bootstrap() {
   const swaggerConfig = new DocumentBuilder()
     .setTitle('E-commerce API')
     .setDescription(
-      'API cho frontend — Auth, Products, Categories, Brands, Carts, Orders, Uploads.',
+      'API cho frontend — Auth, Products, Categories, Brands, Carts, Promotions, Orders, Uploads.',
     )
     .setVersion('1.0')
     .addBearerAuth(

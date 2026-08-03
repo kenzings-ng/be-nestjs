@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { Document, SchemaTypes, Types } from 'mongoose';
 
 /**
  * A single line in a cart. Stores only a product reference + quantity —
@@ -8,7 +8,10 @@ import { Document, Types } from 'mongoose';
  */
 @Schema({ _id: false })
 export class CartItem {
-  @Prop({ type: Types.ObjectId, ref: 'Product', required: true })
+  // NOTE: dùng SchemaTypes.ObjectId (không phải Types.ObjectId) — chỉ SchemaTypes
+  // mới khai báo path là ObjectId thật; Types.ObjectId khiến path thành Mixed
+  // nên Mongoose không cast string sang ObjectId khi query.
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'Product', required: true })
   productId!: Types.ObjectId;
 
   @Prop({ required: true, min: 1 })
@@ -21,7 +24,12 @@ export const CartItemSchema = SchemaFactory.createForClass(CartItem);
  */
 @Schema({ timestamps: true })
 export class Cart extends Document {
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, unique: true })
+  @Prop({
+    type: SchemaTypes.ObjectId,
+    ref: 'User',
+    required: true,
+    unique: true,
+  })
   userId!: Types.ObjectId;
 
   @Prop({ type: [CartItemSchema], default: [] })
