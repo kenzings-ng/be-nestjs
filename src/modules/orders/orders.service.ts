@@ -11,9 +11,21 @@ import { UserRole } from '../users/schema/user.schema';
 import { Product } from '../products/schema/product.schema';
 import { CartsService } from '../carts/carts.service';
 import { PromotionsService } from '../promotions/promotions.service';
+import { TransactionsService } from '../transactions/transactions.service';
+import { TransactionType } from '../transactions/schema/transaction.schema';
 import { Order, OrderPromotion, OrderStatus } from './schema/order.schema';
 import { CheckoutDto } from './dto/checkout.dto';
 
+/**
+ * Turn the user's current cart into an order:
+ *  1. read the cart and reject if empty
+ *  2. snapshot each item's name + price
+ *  3. validate the promotion code (if any) against the cart subtotal
+ *  4. validate & decrement product stock (rolled back on any failure)
+ *  5. claim one promotion redemption (also rolled back on failure)
+ *  6. persist the order and clear the cart
+ *  7. record a "payment" transaction against the order (mock — always succeeds)
+ */
 @Injectable()
 export class OrdersService {
   constructor(
@@ -21,17 +33,9 @@ export class OrdersService {
     @InjectModel(Product.name) private readonly productModel: Model<Product>,
     private readonly cartsService: CartsService,
     private readonly promotionsService: PromotionsService,
+    private readonly transactionsService: TransactionsService,
   ) {}
 
-  /**
-   * Turn the user's current cart into an order:
-   *  1. read the cart and reject if empty
-   *  2. snapshot each item's name + price
-   *  3. validate the promotion code (if any) against the cart subtotal
-   *  4. validate & decrement product stock (rolled back on any failure)
-   *  5. claim one promotion redemption (also rolled back on failure)
-   *  6. persist the order and clear the cart
-   */
   async checkout(userId: string, dto: CheckoutDto) {
     const cart = await this.cartsService.getRawCart(userId);
     if (!cart || cart.items.length === 0) {
@@ -115,6 +119,7 @@ export class OrdersService {
     }
 
     const discount = promotion?.discountAmount ?? 0;
+    const totalPrice = subtotal - discount;
     let order: Order;
     try {
       order = await this.orderModel.create({
@@ -123,7 +128,7 @@ export class OrdersService {
         subtotal,
         discount,
         promotion,
-        totalPrice: subtotal - discount,
+        totalPrice,
         status: OrderStatus.PENDING,
         shippingAddress: dto.shippingAddress,
       });
@@ -137,6 +142,17 @@ export class OrdersService {
     }
 
     await this.cartsService.clearCart(userId);
+
+    // Mock payment — no real gateway, so this always records as settled.
+    await this.transactionsService.record({
+      orderId: order._id as Types.ObjectId,
+      userId: new Types.ObjectId(userId),
+      type: TransactionType.PAYMENT,
+      amount: totalPrice,
+      method: dto.paymentMethod,
+      note: 'Payment recorded at checkout',
+    });
+
     return order;
   }
 
@@ -145,16 +161,19 @@ export class OrdersService {
     return this.orderModel.find({ userId }).sort({ createdAt: -1 }).exec();
   }
 
-  /** A single order the user owns (admins may read any order). */
+  /** A single order the user owns (admins may read any order), with its transactions. */
   async findOneForUser(orderId: string, userId: string, role: UserRole) {
     const order = await this.findByIdOrThrow(orderId);
     if (role !== UserRole.ADMIN && order.userId.toString() !== userId) {
       throw new ForbiddenException('Bạn không có quyền xem đơn hàng này');
     }
-    return order;
+    const transactions = await this.transactionsService.findByOrder(
+      order._id as Types.ObjectId,
+    );
+    return { ...order.toObject(), transactions };
   }
 
-  /** User cancels their own pending order; stock is returned. */
+  /** User cancels their own pending order; stock is returned and payment refunded. */
   async cancel(orderId: string, userId: string, role: UserRole) {
     const order = await this.findByIdOrThrow(orderId);
     if (role !== UserRole.ADMIN && order.userId.toString() !== userId) {
@@ -178,6 +197,16 @@ export class OrdersService {
     }
     order.status = OrderStatus.CANCELLED;
     await order.save();
+
+    // Mock refund — mirrors the payment recorded at checkout.
+    await this.transactionsService.record({
+      orderId: order._id as Types.ObjectId,
+      userId: order.userId,
+      type: TransactionType.REFUND,
+      amount: order.totalPrice,
+      note: 'Refund issued for cancelled order',
+    });
+
     return order;
   }
 

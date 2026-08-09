@@ -1,5 +1,6 @@
-import { IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsOptional, IsString } from 'class-validator';
 import { NormalizeCode } from '../../../common/normalize-code.transform';
+import { PaymentMethod } from '../../transactions/schema/transaction.schema';
 
 /**
  * Checkout turns the current user's cart into an order. No item data is sent —
@@ -15,4 +16,9 @@ export class CheckoutDto {
   @IsString()
   @NormalizeCode()
   promotionCode?: string;
+
+  /** Mock — không có cổng thanh toán thật, chỉ để gắn nhãn transaction. */
+  @IsOptional()
+  @IsEnum(PaymentMethod)
+  paymentMethod?: PaymentMethod;
 }

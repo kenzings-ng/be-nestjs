@@ -14,6 +14,14 @@ export class CartItem {
   @Prop({ type: SchemaTypes.ObjectId, ref: 'Product', required: true })
   productId!: Types.ObjectId;
 
+  // Variant picked for this line. Two lines with the same productId but a
+  // different color/size are kept separate (not merged).
+  @Prop({ required: false })
+  color?: string;
+
+  @Prop({ required: false })
+  size?: string;
+
   @Prop({ required: true, min: 1 })
   quantity!: number;
 }

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -27,6 +28,8 @@ const MAX_SESSIONS = 5;
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
@@ -45,19 +48,26 @@ export class AuthService {
     }
 
     const hashed = await bcrypt.hash(dto.password, BCRYPT_SALT_ROUNDS);
+    // Email verification is disabled for this project (no SMTP configured) —
+    // accounts are marked verified immediately and can log in right away.
     const user = await this.usersService.create({
       email: dto.email,
       password: hashed,
       name: dto.name,
-      isVerified: false,
+      isVerified: true,
     });
 
-    await this.sendVerification(user);
+    // Best-effort — a mail hiccup should never block registration/login.
+    // Account is already marked verified above, so the link is informational
+    // only (clicking it just re-confirms an already-verified account).
+    try {
+      await this.sendVerification(user);
+    } catch (err) {
+      this.logger.warn(`Failed to send verification email to ${user.email}: ${err}`);
+    }
 
-    return {
-      message:
-        'Registration successful. Please check your email to verify your account.',
-    };
+    const tokens = await this.issueTokens(user, false);
+    return { ...tokens, user: this.publicUser(user) };
   }
 
   async login(dto: LoginDto) {
@@ -270,7 +280,9 @@ export class AuthService {
     user.verificationTokenExpires = new Date(Date.now() + VERIFICATION_TTL_MS);
     await user.save();
 
-    const link = `${this.appUrl()}/auth/verify?token=${token}`;
+    // Points at the FE, which calls GET /auth/verify?token=... itself and
+    // shows a result page — the link should never open a raw API response.
+    const link = `${this.frontendUrl()}/verify-email?token=${token}`;
     await this.mailService.sendVerificationEmail(user.email, link);
   }
 
@@ -292,13 +304,9 @@ export class AuthService {
     return createHash('sha256').update(value).digest('hex');
   }
 
-  private appUrl(): string {
-    return this.config.get<string>('app.url') ?? 'http://localhost:3000';
-  }
-
   private frontendUrl(): string {
     return (
-      this.config.get<string>('app.frontendUrl') ?? 'http://localhost:5173'
+      this.config.get<string>('app.frontendUrl') ?? 'http://localhost:4200'
     );
   }
 }

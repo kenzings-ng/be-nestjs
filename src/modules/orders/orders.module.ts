@@ -6,6 +6,7 @@ import { Order, OrderSchema } from './schema/order.schema';
 import { Product, ProductSchema } from '../products/schema/product.schema';
 import { CartsModule } from '../carts/carts.module';
 import { PromotionsModule } from '../promotions/promotions.module';
+import { TransactionsModule } from '../transactions/transactions.module';
 
 @Module({
   imports: [
@@ -18,6 +19,8 @@ import { PromotionsModule } from '../promotions/promotions.module';
     CartsModule,
     // Provides PromotionsService (validate + claim a coupon at checkout).
     PromotionsModule,
+    // Provides TransactionsService (payment/refund records per order).
+    TransactionsModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],

@@ -28,11 +28,17 @@ export class ProductsService {
   }
 
   findAll(): Promise<Product[]> {
-    return this.productModel.find().exec();
+    return this.productModel
+      .find()
+      .populate('categoryId', 'title slug')
+      .exec();
   }
 
   async findOne(slug: string): Promise<Product> {
-    const product = await this.productModel.findOne({ slug }).exec();
+    const product = await this.productModel
+      .findOne({ slug })
+      .populate('categoryId', 'title slug')
+      .exec();
     if (!product) {
       throw new NotFoundException('Không tìm thấy sản phẩm');
     }
@@ -47,7 +53,10 @@ export class ProductsService {
     if (!category) {
       throw new NotFoundException('Không tìm thấy danh mục');
     }
-    return this.productModel.find({ categoryId: category._id }).exec();
+    return this.productModel
+      .find({ categoryId: category._id })
+      .populate('categoryId', 'title slug')
+      .exec();
   }
 
   async update(slug: string, updateProductDto: Partial<UpdateProductDto>) {
