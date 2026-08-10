@@ -5,6 +5,7 @@ import {
   Body,
   Patch,
   Param,
+  Query,
   Delete,
   UseGuards,
 } from '@nestjs/common';
@@ -29,29 +30,40 @@ export class CartsController {
     return this.cartsService.getMyCart(userId);
   }
 
-  // Add a product (merges quantity if already in the cart).
+  // Add a product+variant (merges quantity if the same line already exists).
   @Post('items')
   addItem(@CurrentUser('userId') userId: string, @Body() dto: AddCartItemDto) {
     return this.cartsService.addItem(userId, dto);
   }
 
-  // Set the absolute quantity of one line.
+  // Set the absolute quantity of one product+variant line.
+  // color/size identify the exact line, e.g. PATCH /carts/items/<id>?color=Camel&size=M
   @Patch('items/:productId')
   updateItem(
     @CurrentUser('userId') userId: string,
     @Param('productId') productId: string,
+    @Query('color') color: string | undefined,
+    @Query('size') size: string | undefined,
     @Body() dto: UpdateCartItemDto,
   ) {
-    return this.cartsService.setItemQuantity(userId, productId, dto.quantity);
+    return this.cartsService.setItemQuantity(
+      userId,
+      productId,
+      color,
+      size,
+      dto.quantity,
+    );
   }
 
-  // Remove one line from the cart.
+  // Remove one product+variant line from the cart.
   @Delete('items/:productId')
   removeItem(
     @CurrentUser('userId') userId: string,
     @Param('productId') productId: string,
+    @Query('color') color: string | undefined,
+    @Query('size') size: string | undefined,
   ) {
-    return this.cartsService.removeItem(userId, productId);
+    return this.cartsService.removeItem(userId, productId, color, size);
   }
 
   // Empty the whole cart.

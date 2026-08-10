@@ -1,9 +1,9 @@
-// ecosystem.config.js
+// Copy this to `ecosystem.config.js` (gitignored — paths/tuning are per-machine).
 module.exports = {
   apps: [{
     name: 'shop-api',
     script: './dist/main.js',
-    cwd: '/home/kenzings/shop/be-nestjs',
+    cwd: __dirname,
     instances: 1,          // Cluster mode: tận dụng tất cả CPU cores
     exec_mode: 'cluster',      // QUAN TRỌNG: NestJS hỗ trợ cluster
     autorestart: true,
@@ -13,10 +13,8 @@ module.exports = {
       NODE_ENV: 'production',
       PORT: 3000,
     },
-    // Logs
+    // Logs — omit error_file/out_file to use PM2's default ~/.pm2/logs/*.
     log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-    error_file: 'home/kenzings/.pm2/var/log/pm2/shop-api-error.log',
-    out_file: 'home/kenzings/.pm2/var/log/pm2/shop-api-out.log',
     merge_logs: true,
   }]
 }

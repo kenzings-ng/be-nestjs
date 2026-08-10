@@ -1,4 +1,23 @@
-import { IsString, IsNotEmpty, IsNumber, IsOptional } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsArray,
+  IsBoolean,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
+
+export class ProductColorDto {
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  hex!: string;
+}
 
 export class CreateProductDto {
   @IsString()
@@ -23,11 +42,32 @@ export class CreateProductDto {
 
   @IsNumber()
   @IsOptional()
-  salePrice?: number;
+  compareAtPrice?: number;
 
+  @IsBoolean()
   @IsOptional()
-  @IsString()
-  imageUrl?: string;
+  newArrival?: boolean;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  images?: string[];
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  details?: string[];
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProductColorDto)
+  @IsOptional()
+  colors?: ProductColorDto[];
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  sizes?: string[];
 
   @IsNumber()
   @IsNotEmpty()

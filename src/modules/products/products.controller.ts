@@ -10,7 +10,6 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AdminGuard } from '../auth/guards/admin.guard';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -40,9 +39,8 @@ export class ProductsController {
     return this.productsService.findByCategory(categorySlug);
   }
 
-  // Logged-in users only: view a single product by slug
+  // Public: view a single product by slug
   @Get(':slug')
-  @UseGuards(JwtAuthGuard)
   findOne(@Param('slug') slug: string) {
     return this.productsService.findOne(slug);
   }

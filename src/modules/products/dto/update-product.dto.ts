@@ -1,12 +1,15 @@
+import { PartialType } from '@nestjs/mapped-types';
+import { Type } from 'class-transformer';
 import {
-  IsString,
+  IsArray,
+  IsBoolean,
   IsNumber,
   IsOptional,
+  IsString,
   ValidateIf,
-  IsNotEmpty,
+  ValidateNested,
 } from 'class-validator';
-import { PartialType } from '@nestjs/mapped-types';
-import { CreateProductDto } from './create-product.dto';
+import { CreateProductDto, ProductColorDto } from './create-product.dto';
 
 export class UpdateProductDto extends PartialType(CreateProductDto) {
   @ValidateIf((_, value) => value !== undefined)
@@ -36,13 +39,38 @@ export class UpdateProductDto extends PartialType(CreateProductDto) {
 
   @ValidateIf((_, value) => value !== undefined)
   @IsNumber()
-  @IsNotEmpty()
-  salePrice?: number;
+  @IsOptional()
+  compareAtPrice?: number;
 
   @ValidateIf((_, value) => value !== undefined)
-  @IsString()
+  @IsBoolean()
   @IsOptional()
-  imageUrl?: string;
+  newArrival?: boolean;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  images?: string[];
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  details?: string[];
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProductColorDto)
+  @IsOptional()
+  colors?: ProductColorDto[];
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  sizes?: string[];
 
   @ValidateIf((_, value) => value !== undefined)
   @IsNumber()

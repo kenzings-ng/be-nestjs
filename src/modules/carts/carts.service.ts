@@ -8,9 +8,10 @@ import { AddCartItemDto } from './dto/add-cart-item.dto';
 // Shape of a product once populated onto a cart line.
 interface PopulatedProduct {
   _id: Types.ObjectId;
+  slug: string;
   name: string;
   price: number;
-  imageUrl?: string;
+  images?: string[];
   stock: number;
 }
 
@@ -18,9 +19,12 @@ export interface CartView {
   userId: string;
   items: Array<{
     productId: Types.ObjectId | null;
+    slug?: string;
     name: string;
     price: number;
-    imageUrl?: string;
+    image?: string;
+    color?: string;
+    size?: string;
     quantity: number;
     subtotal: number;
     stock: number;
@@ -29,6 +33,20 @@ export interface CartView {
   }>;
   totalItems: number;
   totalPrice: number;
+}
+
+/** Two lines are "the same" only if product AND variant match. */
+function sameLine(
+  item: { productId: Types.ObjectId; color?: string; size?: string },
+  productId: string,
+  color: string | undefined,
+  size: string | undefined,
+): boolean {
+  return (
+    item.productId.toString() === productId &&
+    (item.color ?? '') === (color ?? '') &&
+    (item.size ?? '') === (size ?? '')
+  );
 }
 
 @Injectable()
@@ -59,8 +77,13 @@ export class CartsService {
     const cart = await this.cartModel
       .findOne({ userId })
       .populate<{
-        items: Array<{ productId: PopulatedProduct | null; quantity: number }>;
-      }>('items.productId', 'name price imageUrl stock')
+        items: Array<{
+          productId: PopulatedProduct | null;
+          color?: string;
+          size?: string;
+          quantity: number;
+        }>;
+      }>('items.productId', 'slug name price images stock')
       .lean()
       .exec();
 
@@ -74,8 +97,11 @@ export class CartsService {
         // Product was deleted after being added to the cart.
         return {
           productId: null,
+          slug: undefined,
           name: '(sản phẩm không còn tồn tại)',
           price: 0,
+          color: it.color,
+          size: it.size,
           quantity: it.quantity,
           subtotal: 0,
           stock: 0,
@@ -85,9 +111,12 @@ export class CartsService {
       }
       return {
         productId: p._id,
+        slug: p.slug,
         name: p.name,
         price: p.price,
-        imageUrl: p.imageUrl,
+        image: p.images?.[0],
+        color: it.color,
+        size: it.size,
         quantity: it.quantity,
         subtotal: p.price * it.quantity,
         stock: p.stock,
@@ -105,7 +134,7 @@ export class CartsService {
     };
   }
 
-  /** Add a product to the cart. If already present, quantities are merged. */
+  /** Add a product+variant to the cart. Merges quantity if the same line exists. */
   async addItem(userId: string, dto: AddCartItemDto): Promise<CartView> {
     const product = await this.productModel.findById(dto.productId).exec();
     if (!product) {
@@ -113,14 +142,16 @@ export class CartsService {
     }
 
     const cart = await this.getOrCreate(userId);
-    const existing = cart.items.find(
-      (i) => i.productId.toString() === dto.productId,
+    const existing = cart.items.find((i) =>
+      sameLine(i, dto.productId, dto.color, dto.size),
     );
     if (existing) {
       existing.quantity += dto.quantity;
     } else {
       cart.items.push({
         productId: new Types.ObjectId(dto.productId),
+        color: dto.color,
+        size: dto.size,
         quantity: dto.quantity,
       });
     }
@@ -128,14 +159,16 @@ export class CartsService {
     return this.getMyCart(userId);
   }
 
-  /** Set the absolute quantity of an existing line. */
+  /** Set the absolute quantity of an existing product+variant line. */
   async setItemQuantity(
     userId: string,
     productId: string,
+    color: string | undefined,
+    size: string | undefined,
     quantity: number,
   ): Promise<CartView> {
     const cart = await this.getRawCart(userId);
-    const item = cart?.items.find((i) => i.productId.toString() === productId);
+    const item = cart?.items.find((i) => sameLine(i, productId, color, size));
     if (!cart || !item) {
       throw new NotFoundException('Sản phẩm không có trong giỏ');
     }
@@ -144,12 +177,17 @@ export class CartsService {
     return this.getMyCart(userId);
   }
 
-  /** Remove a single line from the cart. */
-  async removeItem(userId: string, productId: string): Promise<CartView> {
+  /** Remove a single product+variant line from the cart. */
+  async removeItem(
+    userId: string,
+    productId: string,
+    color: string | undefined,
+    size: string | undefined,
+  ): Promise<CartView> {
     const cart = await this.getRawCart(userId);
     if (cart) {
       cart.items = cart.items.filter(
-        (i) => i.productId.toString() !== productId,
+        (i) => !sameLine(i, productId, color, size),
       );
       await cart.save();
     }

@@ -45,6 +45,9 @@ lerna-debug.log*
 .env.production.local
 .env.local
 
+# PM2 process config — machine-specific paths/tuning, keep .example in git
+ecosystem.config.js
+
 # temp directory
 .temp
 .tmp
@@ -57,3 +60,4 @@ pids
 .env
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+.mongodb-data/
