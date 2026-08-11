@@ -3,6 +3,26 @@ import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// Shared design tokens — mirrors the "Serif" system in the frontend's styles.css.
+const THEME = {
+  serif: "Georgia, 'Times New Roman', serif",
+  sans: 'Arial, Helvetica, sans-serif',
+  ivory: '#faf9f6',
+  ink: '#1a1a1a',
+  muted: '#6b6b6b',
+  border: '#e8e4df',
+  gold: '#b8860b',
+};
+
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
@@ -67,26 +87,25 @@ export class MailService {
     );
   }
 
+  /** Forwards a /contact submission to the shop inbox; reply-to is the customer's own address. */
+  async sendContactMessage(
+    to: string,
+    contact: { name: string; email: string; message: string },
+  ) {
+    const html = this.renderContactEmail(contact);
+    const text = `New message from ${contact.name} <${contact.email}>:\n\n${contact.message}`;
+    await this.send(to, `New contact message from ${contact.name}`, html, text, {
+      replyTo: contact.email,
+    });
+  }
+
   /**
    * Shared editorial email shell (matches the Maison "Serif" design system:
-   * ivory background, serif headings, burnished-gold CTA). Kept table-based
+   * ivory background, serif headings, burnished-gold accents). Kept table-based
    * with inline styles for compatibility across email clients.
    */
-  private renderEmail(opts: {
-    eyebrow: string;
-    heading: string;
-    bodyHtml: string;
-    ctaLabel: string;
-    link: string;
-  }): string {
-    const serif = "Georgia, 'Times New Roman', serif";
-    const sans = "Arial, Helvetica, sans-serif";
-    const ivory = '#faf9f6';
-    const ink = '#1a1a1a';
-    const muted = '#6b6b6b';
-    const border = '#e8e4df';
-    const gold = '#b8860b';
-
+  private renderShell(innerHtml: string): string {
+    const { sans, serif, ivory, ink, muted, border } = THEME;
     return `
 <div style="background-color:${ivory};padding:40px 16px;font-family:${sans};">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;margin:0 auto;background-color:#ffffff;border:1px solid ${border};border-radius:8px;">
@@ -96,21 +115,8 @@ export class MailService {
       </td>
     </tr>
     <tr>
-      <td style="padding:40px;text-align:center;">
-        <p style="margin:0 0 16px;font-family:${sans};font-size:11px;font-weight:bold;letter-spacing:0.15em;text-transform:uppercase;color:${gold};">${opts.eyebrow}</p>
-        <h1 style="margin:0 0 20px;font-family:${serif};font-weight:normal;font-size:26px;line-height:1.3;color:${ink};">${opts.heading}</h1>
-        <p style="margin:0 0 32px;font-family:${sans};font-size:15px;line-height:1.7;color:${muted};">${opts.bodyHtml}</p>
-        <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 32px;">
-          <tr>
-            <td style="border-radius:6px;background-color:${gold};">
-              <a href="${opts.link}" style="display:inline-block;padding:14px 32px;font-family:${sans};font-size:14px;font-weight:bold;letter-spacing:0.02em;color:#ffffff;text-decoration:none;border-radius:6px;">${opts.ctaLabel}</a>
-            </td>
-          </tr>
-        </table>
-        <p style="margin:0;font-family:${sans};font-size:12px;line-height:1.6;color:${muted};">
-          Or copy this link into your browser:<br>
-          <a href="${opts.link}" style="color:${gold};word-break:break-all;">${opts.link}</a>
-        </p>
+      <td style="padding:40px;">
+        ${innerHtml}
       </td>
     </tr>
     <tr>
@@ -122,7 +128,68 @@ export class MailService {
 </div>`.trim();
   }
 
-  private async send(to: string, subject: string, html: string, text: string) {
+  private renderEmail(opts: {
+    eyebrow: string;
+    heading: string;
+    bodyHtml: string;
+    ctaLabel: string;
+    link: string;
+  }): string {
+    const { sans, serif, muted, gold } = THEME;
+    return this.renderShell(`
+        <div style="text-align:center;">
+          <p style="margin:0 0 16px;font-family:${sans};font-size:11px;font-weight:bold;letter-spacing:0.15em;text-transform:uppercase;color:${gold};">${opts.eyebrow}</p>
+          <h1 style="margin:0 0 20px;font-family:${serif};font-weight:normal;font-size:26px;line-height:1.3;color:#1a1a1a;">${opts.heading}</h1>
+          <p style="margin:0 0 32px;font-family:${sans};font-size:15px;line-height:1.7;color:${muted};">${opts.bodyHtml}</p>
+          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 32px;">
+            <tr>
+              <td style="border-radius:6px;background-color:${gold};">
+                <a href="${opts.link}" style="display:inline-block;padding:14px 32px;font-family:${sans};font-size:14px;font-weight:bold;letter-spacing:0.02em;color:#ffffff;text-decoration:none;border-radius:6px;">${opts.ctaLabel}</a>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:0;font-family:${sans};font-size:12px;line-height:1.6;color:${muted};">
+            Or copy this link into your browser:<br>
+            <a href="${opts.link}" style="color:${gold};word-break:break-all;">${opts.link}</a>
+          </p>
+        </div>`);
+  }
+
+  /** Branded notification for the shop inbox — sender card + the message itself. */
+  private renderContactEmail(contact: {
+    name: string;
+    email: string;
+    message: string;
+  }): string {
+    const { sans, serif, ink, muted, border, gold } = THEME;
+    const name = escapeHtml(contact.name);
+    const email = escapeHtml(contact.email);
+    const message = escapeHtml(contact.message).replace(/\n/g, '<br>');
+
+    return this.renderShell(`
+        <p style="margin:0 0 16px;font-family:${sans};font-size:11px;font-weight:bold;letter-spacing:0.15em;text-transform:uppercase;color:${gold};">New Contact Message</p>
+        <h1 style="margin:0 0 24px;font-family:${serif};font-weight:normal;font-size:26px;line-height:1.3;color:${ink};">You&rsquo;ve Got a Message</h1>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;border:1px solid ${border};border-radius:6px;">
+          <tr>
+            <td style="padding:16px 20px;">
+              <p style="margin:0 0 2px;font-family:${sans};font-size:11px;font-weight:bold;letter-spacing:0.1em;text-transform:uppercase;color:${muted};">From</p>
+              <p style="margin:0;font-family:${sans};font-size:15px;color:${ink};">${name}</p>
+              <p style="margin:2px 0 0;font-family:${sans};font-size:13px;color:${muted};">${email}</p>
+            </td>
+          </tr>
+        </table>
+        <p style="margin:0 0 8px;font-family:${serif};font-size:32px;line-height:1;color:${gold};">&ldquo;</p>
+        <p style="margin:-16px 0 24px;font-family:${sans};font-size:15px;line-height:1.7;color:${ink};">${message}</p>
+        <p style="margin:0;font-family:${sans};font-size:12px;line-height:1.6;color:${muted};">Reply directly to this email to reach ${name}.</p>`);
+  }
+
+  private async send(
+    to: string,
+    subject: string,
+    html: string,
+    text: string,
+    opts?: { replyTo?: string },
+  ) {
     if (!this.transporter) {
       this.logger.log(`[DEV MAIL] To: ${to} | ${subject}\n${text}`);
       return;
@@ -130,6 +197,7 @@ export class MailService {
     await this.transporter.sendMail({
       from: this.from,
       to,
+      replyTo: opts?.replyTo,
       subject,
       html,
       text,
