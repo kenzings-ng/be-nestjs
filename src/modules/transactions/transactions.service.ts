@@ -46,6 +46,16 @@ export class TransactionsService {
       .exec();
   }
 
+  /** Admin: every transaction across every order, newest first. */
+  findAll(): Promise<Transaction[]> {
+    return this.transactionModel
+      .find()
+      .sort({ createdAt: -1 })
+      .populate('userId', 'name email')
+      .populate('orderId', 'totalPrice status')
+      .exec();
+  }
+
   private generateReference(type: TransactionType): string {
     const prefix = type === TransactionType.REFUND ? 'RFD' : 'TXN';
     return `${prefix}-${randomBytes(5).toString('hex').toUpperCase()}`;
