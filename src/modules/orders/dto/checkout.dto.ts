@@ -1,6 +1,8 @@
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { NormalizeCode } from '../../../common/normalize-code.transform';
 import { PaymentMethod } from '../../transactions/schema/transaction.schema';
+import { OnlinePaymentDto } from './online-payment.dto';
 
 /**
  * Checkout turns the current user's cart into an order. No item data is sent —
@@ -17,8 +19,14 @@ export class CheckoutDto {
   @NormalizeCode()
   promotionCode?: string;
 
-  /** Mock — không có cổng thanh toán thật, chỉ để gắn nhãn transaction. */
+  /** COD/manual legacy payment. For an online gateway, use `payment` below. */
   @IsOptional()
   @IsEnum(PaymentMethod)
   paymentMethod?: PaymentMethod;
+
+  /** Online payment request. Card values, when supplied, are never stored. */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => OnlinePaymentDto)
+  payment?: OnlinePaymentDto;
 }

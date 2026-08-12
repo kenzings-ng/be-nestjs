@@ -7,6 +7,9 @@ import { Product, ProductSchema } from '../products/schema/product.schema';
 import { CartsModule } from '../carts/carts.module';
 import { PromotionsModule } from '../promotions/promotions.module';
 import { TransactionsModule } from '../transactions/transactions.module';
+import { PaymentsModule } from '../payments/payments.module';
+import { User, UserSchema } from '../users/schema/user.schema';
+import { PaymentWebhooksController } from './payment-webhooks.controller';
 
 @Module({
   imports: [
@@ -14,6 +17,7 @@ import { TransactionsModule } from '../transactions/transactions.module';
       { name: Order.name, schema: OrderSchema },
       // Product is needed to validate stock and decrement it at checkout.
       { name: Product.name, schema: ProductSchema },
+      { name: User.name, schema: UserSchema },
     ]),
     // Provides CartsService (read cart + clear cart on checkout).
     CartsModule,
@@ -21,8 +25,10 @@ import { TransactionsModule } from '../transactions/transactions.module';
     PromotionsModule,
     // Provides TransactionsService (payment/refund records per order).
     TransactionsModule,
+    // Credentials, adapter registry and webhook idempotency storage.
+    PaymentsModule,
   ],
-  controllers: [OrdersController],
+  controllers: [OrdersController, PaymentWebhooksController],
   providers: [OrdersService],
 })
 export class OrdersModule {}
