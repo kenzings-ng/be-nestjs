@@ -9,5 +9,6 @@ export default registerAs('mail', () => ({
   pass: process.env.MAIL_PASSWORD,
   from: process.env.MAIL_FROM ?? 'No Reply <no-reply@shop.com>',
   // Where the /contact form's messages land — defaults to the shop's admin inbox.
-  contactTo: process.env.CONTACT_EMAIL ?? process.env.ADMIN_EMAIL ?? 'admin@shop.com',
+  contactTo:
+    process.env.CONTACT_EMAIL ?? process.env.ADMIN_EMAIL ?? 'admin@shop.com',
 }));

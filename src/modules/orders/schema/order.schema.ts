@@ -94,6 +94,14 @@ export class Order extends Document {
   @Prop({ type: String, enum: OrderStatus, default: OrderStatus.PENDING })
   status!: OrderStatus;
 
+  /** Provider selected for an online payment, e.g. `comesh`. */
+  @Prop({ lowercase: true, trim: true, index: true })
+  paymentProvider?: string;
+
+  /** Stable merchant reference sent to the gateway. */
+  @Prop({ index: true })
+  merchantOrderNo?: string;
+
   @Prop()
   shippingAddress?: string;
 }
