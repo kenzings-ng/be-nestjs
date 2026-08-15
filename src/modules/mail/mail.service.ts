@@ -94,9 +94,15 @@ export class MailService {
   ) {
     const html = this.renderContactEmail(contact);
     const text = `New message from ${contact.name} <${contact.email}>:\n\n${contact.message}`;
-    await this.send(to, `New contact message from ${contact.name}`, html, text, {
-      replyTo: contact.email,
-    });
+    await this.send(
+      to,
+      `New contact message from ${contact.name}`,
+      html,
+      text,
+      {
+        replyTo: contact.email,
+      },
+    );
   }
 
   /**

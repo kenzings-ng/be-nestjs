@@ -318,19 +318,35 @@ export class OrdersService {
   ) {
     const order = await this.findByIdOrThrow(orderId);
     if (role !== UserRole.ADMIN && order.userId.toString() !== userId) {
-      throw new ForbiddenException('Bạn không có quyền thanh toán đơn hàng này');
+      throw new ForbiddenException(
+        'Bạn không có quyền thanh toán đơn hàng này',
+      );
     }
     if (order.status !== OrderStatus.PENDING) {
       throw new ConflictException('Chỉ có thể thanh toán lại đơn hàng pending');
     }
-    const previous = await this.transactionsService.findOnlinePayment(order._id);
-    if (!previous || previous.status === TransactionStatus.SUCCESS || previous.status === TransactionStatus.PENDING) {
-      throw new ConflictException('Đơn hàng chưa có giao dịch failed để thanh toán lại');
+    const previous = await this.transactionsService.findOnlinePayment(
+      order._id,
+    );
+    if (
+      !previous ||
+      previous.status === TransactionStatus.SUCCESS ||
+      previous.status === TransactionStatus.PENDING
+    ) {
+      throw new ConflictException(
+        'Đơn hàng chưa có giao dịch failed để thanh toán lại',
+      );
     }
     const credential = await this.resolveOnlinePaymentCredential(payment);
     const customer = await this.userModel.findById(order.userId).exec();
     if (!customer) throw new NotFoundException('Không tìm thấy khách hàng');
-    const result = await this.startOnlinePayment(order, customer, payment, credential, requestContext);
+    const result = await this.startOnlinePayment(
+      order,
+      customer,
+      payment,
+      credential,
+      requestContext,
+    );
     return { ...order.toObject(), payment: result };
   }
 
@@ -410,7 +426,9 @@ export class OrdersService {
       .exec();
     if (!order) throw new NotFoundException('Không tìm thấy đơn hàng');
     const ownerId =
-      typeof order.userId === 'object' && order.userId !== null && '_id' in order.userId
+      typeof order.userId === 'object' &&
+      order.userId !== null &&
+      '_id' in order.userId
         ? String((order.userId as unknown as { _id: Types.ObjectId })._id)
         : String(order.userId);
     if (role !== UserRole.ADMIN && ownerId !== userId) {
@@ -666,7 +684,7 @@ export class OrdersService {
     credential: PaymentCredential,
     requestContext: CheckoutRequestContext,
   ): Promise<GatewayCheckoutResult> {
-    const idempotencyKey = randomUUID();
+    const idempotencyKey = payment.token ?? randomUUID();
     const transaction = await this.transactionsService.record({
       orderId: order._id,
       userId: order.userId,

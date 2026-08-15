@@ -63,7 +63,9 @@ export class AuthService {
     try {
       await this.sendVerification(user);
     } catch (err) {
-      this.logger.warn(`Failed to send verification email to ${user.email}: ${err}`);
+      this.logger.warn(
+        `Failed to send verification email to ${user.email}: ${err}`,
+      );
     }
 
     const tokens = await this.issueTokens(user, false);

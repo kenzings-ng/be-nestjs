@@ -29,6 +29,27 @@ async function bootstrap() {
       transform: true,
     }),
   );
+
+  const config = app.get(ConfigService);
+
+  if (config.get('app.env') !== 'production') {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('E-commerce API')
+      .setDescription(
+        'API cho frontend — Auth, Products, Categories, Brands, Carts, Promotions, Orders, Payments, Uploads.',
+      )
+      .setVersion('1.0')
+      .addBearerAuth(
+        { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+        'access-token',
+      )
+      .build();
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('docs', app, document, {
+      swaggerOptions: { persistAuthorization: true },
+    });
+  }
+
   // Swagger / OpenAPI docs at /docs (with a persistent "Authorize" bearer field).
   const swaggerConfig = new DocumentBuilder()
     .setTitle('E-commerce API')
@@ -46,7 +67,8 @@ async function bootstrap() {
     swaggerOptions: { persistAuthorization: true },
   });
 
-  const config = app.get(ConfigService);
+
+
   await app.listen(config.get<number>('app.port') ?? 3000);
 }
 void bootstrap();

@@ -8,6 +8,8 @@ export default registerAs('payment', () => ({
     process.env.NODE_ENV === 'production'
       ? PaymentEnvironment.PRODUCTION
       : PaymentEnvironment.SANDBOX,
-  sandboxUrl: process.env.PAYMENT_SANDBOX_URL ?? 'https://payment-sandbox.comesh.xyz',
-  productionUrl: process.env.PAYMENT_PRODUCTION_URL ?? 'https://payment.comesh.xyz',
+  sandboxUrl:
+    process.env.PAYMENT_SANDBOX_URL ?? 'https://payment-sandbox.comesh.xyz',
+  productionUrl:
+    process.env.PAYMENT_PRODUCTION_URL ?? 'https://payment.comesh.xyz',
 }));

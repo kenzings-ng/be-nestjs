@@ -140,7 +140,7 @@ export class ComeshGateway {
   supports(provider: string): boolean {
     return provider.toLowerCase() === 'comesh';
   }
-  
+
   validateCredential(credential: PaymentCredential): void {
     const keys = this.getKeys(credential);
     if (!keys.app_key || !keys.app_secret || !keys.webhook_secret) {

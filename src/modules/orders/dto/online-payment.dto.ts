@@ -162,6 +162,11 @@ export class PaymentAddressDto {
 
 /** Payload required to initiate an online payment after an order is created. */
 export class OnlinePaymentDto {
+  /** Unique token for this payment attempt; reused as the idempotency key. */
+  @IsOptional()
+  @IsString()
+  @Length(8, 128)
+  token?: string;
   @IsString()
   @IsNotEmpty()
   @Matches(/^[a-z0-9_-]+$/i, {
