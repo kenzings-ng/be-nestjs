@@ -1,17 +1,22 @@
 # 🛒 E-commerce Backend
 
 REST API cho ứng dụng thương mại điện tử, xây dựng bằng **NestJS 11 + MongoDB (Mongoose)**.
-Bao gồm xác thực JWT, quản lý sản phẩm/danh mục/thương hiệu, giỏ hàng, đặt hàng, hồ sơ người dùng và upload ảnh. Tài liệu API tương tác qua **Swagger**.
+Bao gồm xác thực JWT, quản lý sản phẩm/danh mục/thương hiệu, giỏ hàng, khuyến mãi,
+đặt hàng, thanh toán, hồ sơ người dùng, liên hệ và upload ảnh. Tài liệu API tương
+tác qua **Swagger**.
 
 ---
 
 ## 1. Yêu cầu môi trường
 
-| Công cụ | Phiên bản khuyến nghị  |
-| ------- | ---------------------- |
-| Node.js | ≥ 18                   |
-| npm     | ≥ 9                    |
-| MongoDB | ≥ 6 (local hoặc Atlas) |
+| Công cụ | Phiên bản khuyến nghị                            |
+| ------- | ------------------------------------------------ |
+| Node.js | ≥ 20.19.0 (khuyến nghị Node 22 LTS hoặc mới hơn) |
+| npm     | ≥ 9                                              |
+| MongoDB | ≥ 6 (local hoặc Atlas)                           |
+
+> `mongoose@9` trong lockfile yêu cầu Node.js ≥ 20.19.0. Node 18 không cài/chạy
+> đúng bộ dependency hiện tại.
 
 Kiểm tra nhanh:
 
@@ -25,39 +30,59 @@ npm -v
 ## 2. Cài đặt
 
 ```bash
-# 1. Cài dependencies
-npm install
+# 1. Cài đúng dependency trong package-lock.json (khuyến nghị khi clone mới)
+npm ci
+
+# Hoặc dùng npm install nếu đang chủ động cập nhật dependency/lockfile
+# npm install
 
 # 2. Tạo file .env từ mẫu
 cp .env.example .env       # Windows PowerShell: Copy-Item .env.example .env
 ```
 
-Sau đó mở `.env` và điền giá trị thật (xem mục dưới).
+Sau đó:
+
+1. Đảm bảo MongoDB local đang chạy, hoặc chuẩn bị connection string của MongoDB Atlas.
+2. Mở `.env` và điền giá trị thật theo mục dưới.
+3. Không commit `.env` hoặc secret thật lên Git.
 
 ---
 
 ## 3. Cấu hình `.env`
 
-| Biến                                            | Bắt buộc | Mô tả                                                                                                                                    |
-| ----------------------------------------------- | :------: | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `MONGODB_URI`                                   |    ✅    | Chuỗi kết nối MongoDB, vd `mongodb://localhost:27017/ecommerce`                                                                          |
-| `JWT_ACCESS_SECRET`                             |    ✅    | Secret ký access token                                                                                                                   |
-| `JWT_REFRESH_SECRET`                            |    ✅    | Secret ký refresh token (khác access)                                                                                                    |
-| `JWT_ACCESS_EXPIRES_IN`                         |          | Hạn access token (mặc định `15m`)                                                                                                        |
-| `JWT_REFRESH_EXPIRES_IN`                        |          | Hạn refresh token (mặc định `7d`)                                                                                                        |
-| `JWT_REFRESH_REMEMBER_EXPIRES_IN`               |          | Hạn refresh khi "remember me" (mặc định `30d`)                                                                                           |
-| `PORT`                                          |          | Cổng chạy app (mặc định `3000`)                                                                                                          |
-| `APP_URL`                                       |          | URL backend, dùng trong email verify/reset và webhook payment. Khi dùng ComesH phải là URL HTTPS public, ví dụ `https://api.example.com` |
-| `FRONTEND_URL`                                  |          | URL frontend                                                                                                                             |
-| `PAYMENT_ENVIRONMENT`                           |          | `sandbox` (mặc định) hoặc `production`; checkout chỉ hiển thị credential active thuộc environment này                                    |
-| `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` |          | Tài khoản admin được seed tự động khi khởi động                                                                                          |
-| `SMTP_*`, `MAIL_FROM`                           |          | Cấu hình gửi mail. **Để trống `SMTP_HOST` ở môi trường dev** → link verify/reset sẽ được in ra console thay vì gửi email                 |
+| Biến                                            | Bắt buộc | Mô tả                                                                                                    |
+| ----------------------------------------------- | :------: | -------------------------------------------------------------------------------------------------------- |
+| `MONGODB_URI`                                   |    ✅    | Chuỗi kết nối MongoDB, ví dụ `mongodb://localhost:27017/ecommerce`                                       |
+| `JWT_ACCESS_SECRET`                             |    ✅    | Secret ký access token                                                                                   |
+| `JWT_REFRESH_SECRET`                            |    ✅    | Secret ký refresh token; phải khác access secret                                                         |
+| `JWT_ACCESS_EXPIRES_IN`                         |          | Hạn access token, mặc định `15m`                                                                         |
+| `JWT_REFRESH_EXPIRES_IN`                        |          | Hạn refresh token, mặc định `7d`                                                                         |
+| `JWT_REFRESH_REMEMBER_EXPIRES_IN`               |          | Hạn refresh khi “remember me”, mặc định `30d`                                                            |
+| `PORT`                                          |          | Cổng backend, mặc định `3000`                                                                            |
+| `APP_URL`                                       |          | Public URL của backend; dùng tạo callback webhook ComesH. Production phải là HTTPS public                |
+| `FRONTEND_URL`                                  |          | URL frontend; dùng tạo link verify/reset email và trang payment return, mặc định `http://localhost:4200` |
+| `NODE_ENV`                                      |          | Khi bằng `production`, checkout luôn dùng payment environment `production`                               |
+| `PAYMENT_ENVIRONMENT`                           |          | `sandbox` (mặc định) hoặc `production`; chọn credential được dùng ở checkout                             |
+| `PAYMENT_SANDBOX_URL`                           |          | Base URL ComesH sandbox, mặc định `https://payment-sandbox.comesh.xyz`                                   |
+| `PAYMENT_PRODUCTION_URL`                        |          | Base URL ComesH production, mặc định `https://payment.comesh.xyz`                                        |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` |          | Tài khoản admin được seed ở lần khởi động đầu tiên; nên đặt password mạnh trước lần chạy đầu             |
+| `MAIL_HOST`                                     |          | SMTP host. Để trống ở local để email/link được ghi ra console                                            |
+| `MAIL_PORT`                                     |          | SMTP port, mặc định `587`                                                                                |
+| `MAIL_ENCRYPTION`                               |          | Đặt `true` để bật kết nối SMTP secure; mặc định `false`                                                  |
+| `MAIL_USERNAME` / `MAIL_PASSWORD`               |          | Thông tin đăng nhập SMTP                                                                                 |
+| `MAIL_FROM`                                     |          | Người gửi email, mặc định `No Reply <no-reply@shop.com>`                                                 |
+| `CONTACT_EMAIL`                                 |          | Hộp thư nhận form liên hệ; mặc định dùng `ADMIN_EMAIL`                                                   |
+| `BASE_URL`                                      |          | Base URL trả về sau khi upload ảnh; nếu bỏ trống sẽ dùng protocol/host của request                       |
 
-Sinh secret ngẫu nhiên mạnh:
+Sinh secret ngẫu nhiên mạnh bằng lệnh dưới. Chạy **hai lần** để lấy hai giá trị
+khác nhau cho access và refresh token:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 ```
+
+Ở local có thể giữ `MAIL_HOST` trống. Email xác minh, reset password và thông báo
+liên hệ sẽ được ghi ra console thay vì gửi qua SMTP.
 
 ---
 
@@ -66,6 +91,9 @@ node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 ```bash
 # Dev (tự reload khi đổi code) — khuyên dùng khi phát triển
 npm run start:dev
+
+# Dev + Node debugger
+npm run start:debug
 
 # Chạy thường
 npm run start
@@ -77,7 +105,9 @@ npm run start:prod
 
 Mặc định app chạy tại **http://localhost:3000**.
 
-> **Tài khoản admin**: khi khởi động lần đầu, hệ thống tự tạo admin từ `ADMIN_EMAIL` / `ADMIN_PASSWORD` (tài khoản này đã được xác thực sẵn, đăng nhập dùng được ngay).
+> **Tài khoản admin**: khi khởi động, hệ thống tạo admin từ `ADMIN_EMAIL` /
+> `ADMIN_PASSWORD` nếu email đó chưa tồn tại. Tài khoản được xác thực sẵn. Thay đổi
+> các biến này sau khi admin đã được tạo sẽ không cập nhật tài khoản cũ.
 
 ---
 
@@ -101,19 +131,21 @@ Token được lưu lại kể cả khi refresh trang.
 
 ## 6. Tổng quan các module
 
-| Nhóm                    | Prefix                      | Ghi chú                                                                                                                                                     |
-| ----------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Auth**                | `/auth`                     | Đăng ký, đăng nhập, refresh, logout, verify email, quên/đặt lại mật khẩu                                                                                    |
-| **Users**               | `/users`                    | Hồ sơ cá nhân (`/users/me`); admin xem danh sách user                                                                                                       |
-| **Products**            | `/products`                 | Duyệt công khai; tạo/sửa/xóa cần quyền admin. Định danh bằng **slug** (`/products/ao-thun-nam`), lọc theo danh mục qua `/products/category/<category-slug>` |
-| **Categories**          | `/categories`               | Danh mục sản phẩm, định danh bằng **slug**                                                                                                                  |
-| **Brands**              | `/brands`                   | Thương hiệu, định danh bằng **slug**                                                                                                                        |
-| **Carts**               | `/carts`                    | Giỏ hàng theo user (thêm/sửa/xóa item)                                                                                                                      |
-| **Promotions**          | `/promotions`               | Mã giảm giá: admin CRUD; user xem mã đang chạy (`/promotions/active`) và thử mã trên giỏ (`/promotions/apply`)                                              |
-| **Orders**              | `/orders`                   | Đặt hàng từ giỏ (`/orders/checkout`, kèm `promotionCode` nếu có), xem/hủy đơn; admin quản lý trạng thái                                                     |
-| **Payment credentials** | `/payment-credentials`      | Admin cấu hình key JSON/capability cho từng cổng; buyer chỉ xem được capability, không có secret                                                            |
-| **Payment webhook**     | `/payments/webhooks/comesh` | Callback public từ ComesH, xác minh HMAC raw body và xử lý idempotent                                                                                       |
-| **Uploads**             | `/upload/image`             | Upload ảnh (multipart, field `file`); ảnh phục vụ tại `/uploads/<filename>`                                                                                 |
+| Nhóm                    | Prefix                      | Ghi chú                                                                                                                 |
+| ----------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| **Auth**                | `/auth`                     | Đăng ký, đăng nhập, refresh, logout, verify email, quên/đặt lại mật khẩu và xem JWT identity (`/auth/me`)               |
+| **Users**               | `/users`                    | User xem/sửa hồ sơ tại `/users/me`; admin xem danh sách và chi tiết user                                                |
+| **Products**            | `/products`                 | Duyệt công khai; tạo/sửa/xóa cần admin. Định danh bằng **slug**; lọc qua `/products/category/<category-slug>`           |
+| **Categories**          | `/categories`               | Duyệt công khai; admin CRUD danh mục theo **slug**                                                                      |
+| **Brands**              | `/brands`                   | Duyệt công khai; admin CRUD thương hiệu theo **slug**                                                                   |
+| **Carts**               | `/carts`                    | Mọi thao tác cần đăng nhập; quản lý giỏ và từng product/variant                                                         |
+| **Promotions**          | `/promotions`               | Admin CRUD; `/promotions/active` là public; `/promotions/apply` cần đăng nhập                                           |
+| **Orders**              | `/orders`                   | Checkout từ giỏ, xem/hủy đơn, đối soát hoặc retry payment; admin xem tất cả, cập nhật trạng thái và refund              |
+| **Payment credentials** | `/payment-credentials`      | Admin quản lý cấu hình cổng; user đăng nhập xem capability an toàn tại `/payment-credentials/available`                 |
+| **Transactions**        | `/transactions`             | Admin xem toàn bộ giao dịch payment/refund                                                                              |
+| **Payment webhook**     | `/payments/webhooks/comesh` | Callback public từ ComesH; xác minh HMAC trên raw body và xử lý idempotent                                              |
+| **Contact**             | `/contact`                  | Public gửi form liên hệ; admin xem danh sách và đánh dấu đã đọc                                                         |
+| **Uploads**             | `/upload/image`             | Cần đăng nhập; multipart field `file`, tối đa 5 MB, nhận JPEG/PNG/GIF/WebP; file được phục vụ tại `/uploads/<filename>` |
 
 **Phân quyền**: `PUBLIC` (không cần token) · `USER` (cần đăng nhập) · `ADMIN` (token có `role = admin`).
 
@@ -127,9 +159,13 @@ Token được lưu lại kể cả khi refresh trang.
 
 ```bash
 npm run test         # unit test
+npm run test:watch   # unit test ở chế độ watch
 npm run test:e2e     # end-to-end
 npm run test:cov     # coverage
 ```
+
+E2E khởi tạo `AppModule`, vì vậy cần cấu hình `MONGODB_URI` tới database test
+đang chạy. Không dùng database production cho test.
 
 ---
 
@@ -140,22 +176,25 @@ npm run lint         # ESLint + Prettier (tự fix)
 npm run format       # Format code bằng Prettier
 ```
 
-### Script dữ liệu (chạy một lần, sau khi deploy code mới)
+### Script dữ liệu
 
 ```bash
 npm run migrate:objectid   # chuyển các field tham chiếu đang lưu dạng chuỗi sang ObjectId
 npm run backfill:slugs     # sinh slug cho document còn thiếu (nếu không có sẽ không truy cập được qua API)
+npm run seed:products      # upsert danh mục và sản phẩm mẫu cho storefront
 ```
 
-Cả hai script đều hỗ trợ `--dry-run` để xem trước mà không ghi gì:
+Hai script migration hỗ trợ `--dry-run` để xem trước mà không ghi dữ liệu:
 
 ```bash
-node scripts/migrate-objectid-refs.js --dry-run
-node scripts/backfill-slugs.js --dry-run
+npm run migrate:objectid -- --dry-run
+npm run backfill:slugs -- --dry-run
 ```
 
-Chạy lại nhiều lần đều an toàn (chỉ đụng vào document thực sự cần sửa). Nếu có nhiều
-môi trường (dev/staging/production) thì phải chạy trên **từng** database.
+Các migration chỉ sửa document cần chuyển đổi; seed dùng slug làm khóa và upsert,
+nên có thể chạy lại mà không tạo bản ghi trùng. Tất cả script đọc `MONGODB_URI` từ
+environment hoặc `.env`. Nếu có nhiều môi trường thì phải chạy trên **từng**
+database, và nên chạy `--dry-run` trước với dữ liệu quan trọng.
 
 ---
 
@@ -163,7 +202,8 @@ môi trường (dev/staging/production) thì phải chạy trên **từng** data
 
 ```
 src/
-├── config/            # Cấu hình (app, database, jwt, mail, admin)
+├── common/            # Thành phần dùng chung
+├── config/            # Cấu hình app, database, JWT, mail, payment, admin
 ├── modules/
 │   ├── auth/          # Xác thực & phân quyền (JWT, guards, strategies)
 │   ├── users/         # Người dùng & hồ sơ (profile)
@@ -173,6 +213,9 @@ src/
 │   ├── carts/         # Giỏ hàng
 │   ├── promotions/    # Mã giảm giá
 │   ├── orders/        # Đơn hàng
+│   ├── payments/      # Credential, gateway ComesH và webhook idempotency
+│   ├── transactions/  # Giao dịch payment/refund
+│   ├── contact/       # Form liên hệ và inbox admin
 │   ├── uploads/       # Upload ảnh
 │   └── mail/          # Gửi email
 ├── app.module.ts
@@ -191,14 +234,24 @@ src/
 - `cardBrands`: các mạng thẻ được chấp nhận, ví dụ `visa`, `mastercard`.
 - `environment`, `currency`, `isActive` để tách sandbox/production và bật/tắt an toàn.
 
-Secret `keys` dùng `select: false` và không bao giờ được trả về từ API. Endpoint quản trị là `POST|GET|PATCH|DELETE /payment-credentials`; `GET /payment-credentials/available` chỉ trả capability đang bật cho user đã đăng nhập.
+Secret `keys` dùng `select: false`, nên không xuất hiện trong query thông thường.
+API quản trị gồm `POST /payment-credentials`, `GET /payment-credentials`,
+`GET /payment-credentials/:id`, `PATCH /payment-credentials/:id` và
+`DELETE /payment-credentials/:id`. Chỉ hai endpoint admin `GET` chủ động trả
+`keys` để đối chiếu; response create/update và
+`GET /payment-credentials/available` không trả secret. Endpoint `available` cần
+đăng nhập và chỉ trả capability đang bật trong environment checkout hiện tại.
 
-API quản trị trả lại `keys` để admin đối chiếu cấu hình; các endpoint checkout/available không trả secret. URL sandbox/production được cấu hình bằng `PAYMENT_SANDBOX_URL` và `PAYMENT_PRODUCTION_URL`; mỗi credential cũng có thể override bằng `keys.baseUrl`. Currency được snapshot trên mỗi `Transaction`, nên việc đổi `currency` trong credential về sau không làm sai currency của refund/đối soát cho payment đã tạo.
+URL sandbox/production lấy từ `PAYMENT_SANDBOX_URL` và
+`PAYMENT_PRODUCTION_URL`; từng credential có thể override bằng `keys.baseUrl`.
+Khi `NODE_ENV=production`, checkout luôn chọn environment `production`; nếu
+không thì dùng `PAYMENT_ENVIRONMENT` và mặc định là `sandbox`. Currency được
+snapshot trên mỗi `Transaction`, nên đổi currency của credential về sau không
+làm sai currency của refund/đối soát payment đã tạo.
 
-Ví dụ tạo cấu hình sandbox (gọi bằng admin token):
+Ví dụ tạo cấu hình sandbox (gọi `POST /payment-credentials` bằng admin token):
 
 ```json
-POST /payment-credentials
 {
   "provider": "comesh",
   "environment": "sandbox",
@@ -215,10 +268,11 @@ POST /payment-credentials
 }
 ```
 
-Khi checkout online, gửi object `payment`. Ví dụ dưới dùng hosted checkout (khuyến nghị vì backend không nhận PAN/CVV):
+Khi checkout online, gửi object `payment`. Ví dụ dưới gọi
+`POST /orders/checkout` và dùng hosted checkout (khuyến nghị vì request này
+không gửi PAN/CVV qua backend):
 
 ```json
-POST /orders/checkout
 {
   "payment": {
     "provider": "comesh",
@@ -241,9 +295,23 @@ POST /orders/checkout
 }
 ```
 
-Response có `payment.nextAction`; frontend redirect đến `redirectUrl` hoặc render `html` theo `nextAction.type`. Sau khi quay về, gọi `POST /orders/:id/payment-status` để đối soát tức thì. Kết quả cuối cùng vẫn được cập nhật bởi webhook `POST /payments/webhooks/comesh`, endpoint này chỉ trả `SUCCESS` khi chữ ký `X-Webhook-Signature` (HMAC của `timestamp.rawBody`) hợp lệ và `eventId` chưa được xử lý.
+Response có `payment.nextAction`; frontend redirect đến `redirectUrl` hoặc render
+`html` theo `nextAction.type`. Sau khi quay về, gọi
+`POST /orders/:id/payment-status` để đối soát tức thì. Có thể retry payment qua
+`POST /orders/:id/payment-retry` khi phù hợp.
 
-Admin hoàn tiền toàn phần hoặc một phần qua `POST /orders/:id/refund`, body tùy chọn `{ "amount": 50.00, "reason": "Customer requested refund" }`. Không gửi `amount` để hoàn phần còn lại. Raw card data không được lưu trong Order, Transaction hay PaymentCredential.
+Kết quả cuối cùng vẫn được cập nhật bởi webhook
+`POST /payments/webhooks/comesh`. ComesH phải gửi `X-Webhook-Timestamp` và
+`X-Webhook-Signature`; chữ ký là HMAC-SHA256 của
+`<timestamp>.<exact-raw-body>`. Endpoint trả plain text `SUCCESS` sau khi xác
+thực và xử lý thành công. `eventId` trùng được xác nhận idempotent bằng
+`SUCCESS`; lỗi xử lý sẽ giải phóng claim để provider có thể retry.
+
+Admin hoàn tiền toàn phần hoặc một phần qua `POST /orders/:id/refund`, body tùy
+chọn `{ "amount": 50.00, "reason": "Customer requested refund" }`. Không gửi
+`amount` để hoàn phần còn lại. Raw card data của source `card` chỉ được chuyển
+tiếp tới gateway và không được lưu trong Order, Transaction hay
+PaymentCredential.
 
 > ComesH v3 hiện chỉ tài liệu hóa nguồn `checkout`, `card`, và `token`; adapter chỉ bật luồng method `card` cho ComesH. Có thể lưu `googlepay`/`applepay` trên credential để dùng khi bổ sung adapter tương ứng, nhưng không được gửi chúng như ComesH v3 hỗ trợ.
 
@@ -256,3 +324,7 @@ Admin hoàn tiền toàn phần hoặc một phần qua `POST /orders/:id/refund
 | `401 Unauthorized` khi gọi API             | Thiếu/sai header `Authorization: Bearer <token>` hoặc token hết hạn                           |
 | `403 Forbidden`                            | Endpoint yêu cầu quyền admin                                                                  |
 | `400 Bad Request` khi gửi body             | Có field không hợp lệ hoặc field lạ (API bật `whitelist` — chỉ nhận đúng field đã định nghĩa) |
+| `npm` báo `Unsupported engine`             | Node.js quá cũ; dùng Node ≥ 20.19.0                                                           |
+| Không nhận được email ở local              | `MAIL_HOST` đang để trống; kiểm tra link/nội dung mail trong console                          |
+| Checkout online không thấy cổng thanh toán | Chưa có credential active đúng `PAYMENT_ENVIRONMENT`, hoặc method chưa được bật               |
+| ComesH không gọi được webhook              | `APP_URL` chưa phải HTTPS public hoặc credential/webhook secret không đúng                    |
