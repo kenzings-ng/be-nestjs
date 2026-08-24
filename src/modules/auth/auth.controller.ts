@@ -75,6 +75,6 @@ export class AuthController {
   @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard)
   me(@CurrentUser() user: AuthUser) {
-    return user;
+    return this.authService.getCurrentUser(user.userId);
   }
 }

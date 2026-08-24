@@ -48,18 +48,15 @@ export class AuthService {
     }
 
     const hashed = await bcrypt.hash(dto.password, BCRYPT_SALT_ROUNDS);
-    // Email verification is disabled for this project (no SMTP configured) —
-    // accounts are marked verified immediately and can log in right away.
     const user = await this.usersService.create({
       email: dto.email,
       password: hashed,
       name: dto.name,
-      isVerified: true,
+      isVerified: false,
     });
 
-    // Best-effort — a mail hiccup should never block registration/login.
-    // Account is already marked verified above, so the link is informational
-    // only (clicking it just re-confirms an already-verified account).
+    // Best-effort: a temporary SMTP failure must not block account creation or
+    // the first signed-in session. The customer can resend from the storefront.
     try {
       await this.sendVerification(user);
     } catch (err) {
@@ -83,14 +80,16 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    if (!user.isVerified) {
-      throw new UnauthorizedException(
-        'Please verify your email before logging in',
-      );
-    }
-
     const tokens = await this.issueTokens(user, dto.rememberMe ?? false);
     return { ...tokens, user: this.publicUser(user) };
+  }
+
+  async getCurrentUser(userId: string) {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new UnauthorizedException('User session is no longer valid');
+    }
+    return this.publicUser(user);
   }
 
   // ---------------------------------------------------------------------------
@@ -171,7 +170,7 @@ export class AuthService {
     user.verificationTokenExpires = undefined;
     await user.save();
 
-    return { message: 'Email verified successfully. You can now log in.' };
+    return { message: 'Email verified successfully.' };
   }
 
   async resendVerification(email: string) {
