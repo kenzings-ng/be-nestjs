@@ -83,6 +83,8 @@ export class User extends Document {
 
   @Prop({ default: false })
   isVerified!: boolean;
+  @Prop({ default: false })
+  isLocked!: boolean;
 
   // Personal profile details (optional, editable by the user).
   @Prop({ type: ProfileSchema, default: () => ({}) })

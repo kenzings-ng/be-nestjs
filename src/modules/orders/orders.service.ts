@@ -8,6 +8,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { MailService } from '../mail/mail.service';
 import { InjectModel } from '@nestjs/mongoose';
 import { randomUUID } from 'crypto';
 import { isIP } from 'net';
@@ -21,6 +22,12 @@ import {
   ComeshRefundData,
   ComeshWebhookEvent,
 } from '../payments/gateways/comesh.gateway';
+import {
+  GlodiPayBrowserDetails,
+  GlodiPayCardPaymentRequest,
+  GlodiPayIpnPayload,
+  GlodiPayPaymentResponse,
+} from '../payments/gateways/glodipay.gateway';
 import { PaymentCredentialsService } from '../payments/payment-credentials.service';
 import { PaymentGatewaysService } from '../payments/payment-gateways.service';
 import {
@@ -84,6 +91,7 @@ export class OrdersService {
     private readonly paymentGatewaysService: PaymentGatewaysService,
     private readonly paymentWebhooksService: PaymentWebhooksService,
     private readonly config: ConfigService,
+    private readonly mailService: MailService,
   ) {}
 
   async checkout(
@@ -201,6 +209,15 @@ export class OrdersService {
     // a 3DS redirect. This prevents a second checkout from double-reserving it.
     await this.cartsService.clearCart(userId);
 
+    try {
+      const customerForMail = await this.userModel.findById(userId).exec();
+      if (customerForMail) {
+        this.mailService.sendOrderConfirmation(customerForMail.email, { id: order._id.toString() }).catch(err => console.error('Failed to send order email:', err));
+      }
+    } catch (err) {
+      console.error('Failed to fetch user for order email:', err);
+    }
+
     if (credential && dto.payment) {
       const customer = await this.userModel.findById(userId).exec();
       if (!customer) {
@@ -208,7 +225,7 @@ export class OrdersService {
         // than trying to unwind a persisted checkout.
         throw new NotFoundException('Không tìm thấy người dùng thanh toán');
       }
-      const payment = await this.startOnlinePayment(
+      const payment = await this.executeOnlinePaymentWithCascade(
         order,
         customer,
         dto.payment,
@@ -338,9 +355,28 @@ export class OrdersService {
       );
     }
     const credential = await this.resolveOnlinePaymentCredential(payment);
+
+    // Check payment attempt limits if only one processor is active
+    const checkoutEnvironment =
+      this.config.get<PaymentEnvironment>('payment.environment') ??
+      PaymentEnvironment.SANDBOX;
+    const activeCardCredentials =
+      await this.paymentCredentialsService.findActiveCardCredentials(
+        checkoutEnvironment,
+      );
+    const isSingleProcessor = activeCardCredentials.length <= 1;
+    const maxAttempts = credential.maxPaymentAttempts ?? 3;
+    const currentAttempts = order.paymentAttempts ?? 0;
+
+    if (isSingleProcessor && currentAttempts >= maxAttempts) {
+      throw new ConflictException(
+        `Đã vượt quá số lần thử thanh toán tối đa (${maxAttempts} lần). Vui lòng liên hệ hỗ trợ hoặc chọn phương thức khác.`,
+      );
+    }
+
     const customer = await this.userModel.findById(order.userId).exec();
     if (!customer) throw new NotFoundException('Không tìm thấy khách hàng');
-    const result = await this.startOnlinePayment(
+    const result = await this.executeOnlinePaymentWithCascade(
       order,
       customer,
       payment,
@@ -409,6 +445,45 @@ export class OrdersService {
       // A non-SUCCESS response makes ComesH retry. Releasing the event claim
       // ensures the retry can process it instead of being treated as a duplicate.
       await this.paymentWebhooksService.discard(event.eventId);
+      throw error;
+    }
+  }
+
+  /** Called by the public GlodiPay webhook (IPN) endpoint. */
+  async handleGlodiPayWebhook(
+    payload: GlodiPayIpnPayload,
+  ): Promise<{ returnCode: string; description: string }> {
+    if (!payload || !payload.signature || !payload.transactionId || !payload.ref) {
+      throw new BadRequestException('GlodiPay IPN payload không đúng cấu trúc');
+    }
+
+    const credentials =
+      await this.paymentCredentialsService.findForWebhook('glodipay');
+    const credential = credentials.find((candidate) =>
+      this.paymentGatewaysService.verifyGlodiPayWebhook(
+        candidate,
+        payload as unknown as Record<string, unknown>,
+      ),
+    );
+    if (!credential) {
+      throw new UnauthorizedException('GlodiPay IPN signature không hợp lệ');
+    }
+
+    const eventId = `glodipay-${payload.transactionId}-${payload.status}`;
+    const claimed = await this.paymentWebhooksService.claim(
+      eventId,
+      credential.provider,
+      payload.status,
+    );
+    if (!claimed) {
+      return { returnCode: '100', description: 'Received' };
+    }
+
+    try {
+      await this.applyGlodiPayIpn(credential, payload, eventId);
+      return { returnCode: '100', description: 'Received' };
+    } catch (error) {
+      await this.paymentWebhooksService.discard(eventId);
       throw error;
     }
   }
@@ -674,7 +749,98 @@ export class OrdersService {
         'ComesH v3 hiện chỉ tài liệu hóa thanh toán thẻ (source checkout/card/token)',
       );
     }
+    if (
+      credential.provider === 'glodipay' &&
+      payment.paymentMethod !== GatewayPaymentMethod.CARD
+    ) {
+      throw new BadRequestException(
+        'GlodiPay S2S hiện chỉ hỗ trợ thanh toán thẻ (card)',
+      );
+    }
     return credential;
+  }
+
+  /**
+   * Orchestrates online payment with auto-cascading between card processors (ComesH <-> GlodiPay)
+   * and tracks payment attempts.
+   */
+  private async executeOnlinePaymentWithCascade(
+    order: Order,
+    customer: User,
+    payment: OnlinePaymentDto,
+    primaryCredential: PaymentCredential,
+    requestContext: CheckoutRequestContext,
+  ): Promise<GatewayCheckoutResult> {
+    const isCard = payment.paymentMethod === GatewayPaymentMethod.CARD;
+    const checkoutEnvironment =
+      this.config.get<PaymentEnvironment>('payment.environment') ??
+      PaymentEnvironment.SANDBOX;
+
+    // Increment payment attempts for this order
+    const currentAttempts = (order.paymentAttempts ?? 0) + 1;
+    order.paymentAttempts = currentAttempts;
+    order.paymentProvider = primaryCredential.provider;
+    await order.save();
+
+    // Try primary processor first
+    const primaryResult = await this.startOnlinePayment(
+      order,
+      customer,
+      payment,
+      primaryCredential,
+      requestContext,
+      currentAttempts,
+    );
+
+    // If successful or pending redirect/action, return immediately
+    if (primaryResult.status !== 'failed') {
+      return primaryResult;
+    }
+
+    // Auto-cascade logic: only applies to card S2S payments between comesh and glodipay
+    if (!isCard || !['comesh', 'glodipay'].includes(primaryCredential.provider)) {
+      return primaryResult;
+    }
+
+    // Find all active card processors in this environment
+    const activeCardCredentials =
+      await this.paymentCredentialsService.findActiveCardCredentials(
+        checkoutEnvironment,
+      );
+
+    const fallbackProvider =
+      primaryCredential.provider === 'comesh' ? 'glodipay' : 'comesh';
+    const fallbackCredential = activeCardCredentials.find(
+      (c) => c.provider === fallbackProvider,
+    );
+
+    if (!fallbackCredential) {
+      // Only 1 processor enabled; no fallback available
+      return primaryResult;
+    }
+
+    // Attempt cascade to the secondary processor
+    const cascadeAttempt = currentAttempts + 1;
+    order.paymentAttempts = cascadeAttempt;
+    order.paymentProvider = fallbackCredential.provider;
+    await order.save();
+
+    const cascadePaymentDto: OnlinePaymentDto = {
+      ...payment,
+      provider: fallbackCredential.provider,
+      token: `${payment.token ?? randomUUID()}-cascade`,
+    };
+
+    const cascadeResult = await this.startOnlinePayment(
+      order,
+      customer,
+      cascadePaymentDto,
+      fallbackCredential,
+      requestContext,
+      cascadeAttempt,
+    );
+
+    return cascadeResult;
   }
 
   private async startOnlinePayment(
@@ -683,6 +849,7 @@ export class OrdersService {
     payment: OnlinePaymentDto,
     credential: PaymentCredential,
     requestContext: CheckoutRequestContext,
+    attemptNumber = 1,
   ): Promise<GatewayCheckoutResult> {
     const idempotencyKey = payment.token ?? randomUUID();
     const transaction = await this.transactionsService.record({
@@ -695,11 +862,22 @@ export class OrdersService {
       status: TransactionStatus.PENDING,
       provider: credential.provider,
       paymentCredentialId: credential._id,
-      merchantReference: order.merchantOrderNo,
+      merchantReference: `${order.merchantOrderNo}-att${attemptNumber}`,
       idempotencyKey,
       providerStatus: 'created',
-      note: `Payment initiated with ${credential.provider}`,
+      note: `Payment initiated with ${credential.provider} (attempt ${attemptNumber})`,
     });
+
+    if (credential.provider === 'glodipay') {
+      return this.startGlodiPayPayment(
+        order,
+        customer,
+        payment,
+        credential,
+        transaction,
+        requestContext,
+      );
+    }
 
     let response: ComeshEnvelope<ComeshPaymentData>;
     try {
@@ -711,6 +889,7 @@ export class OrdersService {
           payment,
           credential,
           requestContext,
+          transaction.merchantReference,
         ),
         idempotencyKey,
       );
@@ -770,6 +949,7 @@ export class OrdersService {
     payment: OnlinePaymentDto,
     credential: PaymentCredential,
     requestContext: CheckoutRequestContext,
+    merchantReference?: string,
   ): ComeshPaymentRequest {
     const clientIp = requestContext.clientIp;
     if (!clientIp || isIP(clientIp) === 0) {
@@ -788,12 +968,14 @@ export class OrdersService {
       value: this.formatAmount(order.totalPrice),
       currency: credential.currency,
     };
+    const finalMerchantOrderNo =
+      merchantReference ?? order.merchantOrderNo ?? `ORDER-${order._id.toString()}`;
     return {
-      merchantOrderNo: order.merchantOrderNo ?? `ORDER-${order._id.toString()}`,
+      merchantOrderNo: finalMerchantOrderNo,
       order: {
         amount,
         placedAt: new Date().toISOString(),
-        description: `Order ${order.merchantOrderNo ?? order._id.toString()}`,
+        description: `Order ${finalMerchantOrderNo}`,
         items: order.items.map((item) => ({
           sku: item.productId.toString(),
           name: item.name,
@@ -1034,6 +1216,259 @@ export class OrdersService {
     const appUrl =
       this.config.get<string>('app.url') ?? 'http://localhost:3000';
     return `${appUrl.replace(/\/$/, '')}/payments/webhooks/comesh`;
+  }
+
+  private glodiPayNotifyUrl(): string {
+    const appUrl =
+      this.config.get<string>('app.url') ?? 'http://localhost:3000';
+    return `${appUrl.replace(/\/$/, '')}/payments/webhooks/glodipay`;
+  }
+
+  private async startGlodiPayPayment(
+    order: Order,
+    customer: User,
+    payment: OnlinePaymentDto,
+    credential: PaymentCredential,
+    transaction: any,
+    requestContext: CheckoutRequestContext,
+  ): Promise<GatewayCheckoutResult> {
+    const card = payment.source.card;
+    if (!card) {
+      throw new BadRequestException('GlodiPay S2S yêu cầu thông tin thẻ (card)');
+    }
+
+    const payload = this.buildGlodiPayCardPaymentRequest(
+      order,
+      customer,
+      payment,
+      credential,
+      requestContext,
+      transaction.merchantReference,
+    );
+
+    let response: GlodiPayPaymentResponse;
+    try {
+      response = await this.paymentGatewaysService.createGlodiPayCardPayment(
+        credential,
+        payload,
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Không thể tạo thanh toán GlodiPay';
+      await this.transactionsService.updateGatewayPayment(transaction._id, {
+        providerStatus: 'unknown',
+        status: TransactionStatus.PENDING,
+        note: message,
+      });
+      return {
+        merchantOrderNo: order.merchantOrderNo ?? '',
+        status: 'pending',
+        provider: credential.provider,
+        paymentMethod: payment.paymentMethod,
+        code: 'GATEWAY_UNAVAILABLE',
+        message: 'Đơn hàng đã được tạo. Hãy đối soát lại trạng thái thanh toán.',
+      };
+    }
+
+    if (response.status === 'error') {
+      await this.transactionsService.updateGatewayPayment(transaction._id, {
+        providerStatus: 'failed',
+        status: TransactionStatus.FAILED,
+        note: response.message,
+      });
+      return {
+        merchantOrderNo: order.merchantOrderNo ?? '',
+        status: 'failed',
+        provider: credential.provider,
+        paymentMethod: payment.paymentMethod,
+        code: 'PAYMENT_FAILED',
+        message: response.message,
+      };
+    }
+
+    if (response.status === 'redirect' && response.data?.url) {
+      await this.transactionsService.updateGatewayPayment(transaction._id, {
+        gatewayPaymentId: response.data.transactionId,
+        providerStatus: 'redirect',
+        status: TransactionStatus.PENDING,
+      });
+      return {
+        paymentId: response.data.transactionId,
+        merchantOrderNo: order.merchantOrderNo ?? '',
+        status: 'pending',
+        provider: credential.provider,
+        paymentMethod: payment.paymentMethod,
+        nextAction: {
+          type: 'redirect',
+          redirectUrl: response.data.url,
+        },
+        code: 'SUCCESS',
+        message: response.message,
+      };
+    }
+
+    if (response.status === 'success') {
+      await this.transactionsService.updateGatewayPayment(transaction._id, {
+        gatewayPaymentId: response.data?.transactionId,
+        providerStatus: 'successful',
+        status: TransactionStatus.SUCCESS,
+      });
+      order.status = OrderStatus.PAID;
+      await order.save();
+
+      return {
+        paymentId: response.data?.transactionId,
+        merchantOrderNo: order.merchantOrderNo ?? '',
+        status: 'captured',
+        provider: credential.provider,
+        paymentMethod: payment.paymentMethod,
+        code: 'SUCCESS',
+        message: response.message,
+      };
+    }
+
+    // pending
+    await this.transactionsService.updateGatewayPayment(transaction._id, {
+      gatewayPaymentId: response.data?.transactionId,
+      providerStatus: response.status,
+      status: TransactionStatus.PENDING,
+    });
+    return {
+      paymentId: response.data?.transactionId,
+      merchantOrderNo: order.merchantOrderNo ?? '',
+      status: 'pending',
+      provider: credential.provider,
+      paymentMethod: payment.paymentMethod,
+      code: 'SUCCESS',
+      message: response.message,
+    };
+  }
+
+  private buildGlodiPayCardPaymentRequest(
+    order: Order,
+    customer: User,
+    payment: OnlinePaymentDto,
+    credential: PaymentCredential,
+    requestContext: CheckoutRequestContext,
+    merchantReference?: string,
+  ): Omit<GlodiPayCardPaymentRequest, 'merchantId' | 'signature'> {
+    const card = payment.source.card!;
+    const clientIp = requestContext.clientIp;
+    if (!clientIp || isIP(clientIp) === 0) {
+      throw new BadRequestException(
+        'Không xác định được địa chỉ IP của khách hàng',
+      );
+    }
+
+    const returnUrl = this.returnUrlForOrder(
+      payment.returnUrl ?? this.defaultReturnUrl(),
+      order._id.toString(),
+    );
+
+    const nameParts = payment.billingAddress.name.trim().split(/\s+/);
+    const firstName = nameParts[0] || 'Customer';
+    const lastName = nameParts.slice(1).join(' ') || firstName;
+
+    // Build browserDetails required by GlodiPay
+    const browserDetails: GlodiPayBrowserDetails = {
+      accept_header: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      screen_width: String(payment.browser.screenWidth ?? 1920),
+      screen_height: String(payment.browser.screenHeight ?? 1080),
+      screen_color_depth: '24',
+      window_width: String(payment.browser.screenWidth ?? 1920),
+      window_height: String(payment.browser.screenHeight ?? 1080),
+      language: payment.browser.acceptLanguage ?? 'en-US',
+      java_enabled: 'false',
+      user_agent: payment.browser.userAgent ?? requestContext.userAgent ?? 'Mozilla/5.0',
+      time_zone: String(-(payment.browser.timeZoneOffset ?? -420) / 60),
+      time_zone_name: 'Asia/Ho_Chi_Minh',
+    };
+
+    const cardYearTwoDigit = card.expiryYear.length === 4
+      ? card.expiryYear.slice(-2)
+      : card.expiryYear;
+
+    const finalOrderRef =
+      merchantReference ?? order.merchantOrderNo ?? `ORDER-${order._id.toString()}`;
+
+    return {
+      orderRef: finalOrderRef,
+      amount: order.totalPrice,
+      currency: credential.currency,
+      paymentMethod: 'card',
+      callbackUrl: returnUrl,
+      notificationUrl: this.glodiPayNotifyUrl(),
+      cancelUrl: returnUrl,
+      errorUrl: returnUrl,
+      cardNumber: card.number,
+      cardMonth: card.expiryMonth.padStart(2, '0'),
+      cardYear: cardYearTwoDigit,
+      cardSecurityCode: card.cvv,
+      billingFirstName: firstName,
+      billingLastName: lastName,
+      billingEmail: payment.billingAddress.email || customer.email,
+      billingStreet1: payment.billingAddress.line1,
+      billingStreet2: payment.billingAddress.line2,
+      billingCity: payment.billingAddress.city,
+      billingState: payment.billingAddress.state || (['US', 'CA'].includes(payment.billingAddress.country.toUpperCase()) ? 'CA' : undefined),
+      billingCountry: payment.billingAddress.country.toUpperCase(),
+      billingPostalCode: payment.billingAddress.postalCode || '10000',
+      billingPhoneNumber: payment.billingAddress.phone || customer.profile?.phone || '1234567890',
+      customerIp: clientIp,
+      orderDescription: `Order ${finalOrderRef}`,
+      metadata: { orderId: order._id.toString() },
+      browserDetails,
+    };
+  }
+
+  private async applyGlodiPayIpn(
+    credential: PaymentCredential,
+    ipn: GlodiPayIpnPayload,
+    eventId: string,
+  ) {
+    let transaction = await this.transactionsService.findGatewayPaymentById(
+      credential.provider,
+      ipn.transactionId,
+    );
+    if (!transaction && ipn.ref) {
+      transaction = await this.transactionsService.findGatewayPaymentByOrderRef(
+        credential.provider,
+        ipn.ref,
+      );
+    }
+    if (!transaction) {
+      throw new NotFoundException('Không tìm thấy giao dịch GlodiPay tương ứng');
+    }
+
+    const isSuccess = ipn.status.toLowerCase() === 'successful';
+    const isFailed = ['failed', 'error'].includes(ipn.status.toLowerCase());
+    const newStatus = isSuccess
+      ? TransactionStatus.SUCCESS
+      : isFailed
+        ? TransactionStatus.FAILED
+        : TransactionStatus.PENDING;
+
+    const updated = await this.transactionsService.updateGatewayPayment(
+      transaction._id,
+      {
+        gatewayPaymentId: ipn.transactionId,
+        providerStatus: ipn.status,
+        status: newStatus,
+        cardBrand: ipn.paymentMethodDetails?.card?.type,
+        cardLastFour: ipn.paymentMethodDetails?.card?.lastFourDigits,
+        note: ipn.message ?? undefined,
+      },
+    );
+
+    if (isSuccess) {
+      const order = await this.findByIdOrThrow(transaction.orderId.toString());
+      if (order.status === OrderStatus.PENDING) {
+        order.status = OrderStatus.PAID;
+        await order.save();
+      }
+    }
+
+    await this.paymentWebhooksService.attachTransaction(eventId, updated._id);
   }
 
   private async findByIdOrThrow(orderId: string) {

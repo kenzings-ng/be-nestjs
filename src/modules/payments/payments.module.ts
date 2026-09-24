@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ComeshGateway } from './gateways/comesh.gateway';
+import { GlodiPayGateway } from './gateways/glodipay.gateway';
 import { PaymentCredentialsController } from './payment-credentials.controller';
 import { PaymentCredentialsService } from './payment-credentials.service';
 import { PaymentGatewaysService } from './payment-gateways.service';
@@ -31,12 +32,14 @@ import {
     PaymentCredentialsService,
     PaymentWebhooksService,
     ComeshGateway,
+    GlodiPayGateway,
     PaymentGatewaysService,
   ],
   exports: [
     PaymentCredentialsService,
     PaymentWebhooksService,
     PaymentGatewaysService,
+    GlodiPayGateway,
   ],
 })
 export class PaymentsModule {}

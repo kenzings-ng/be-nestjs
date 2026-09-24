@@ -330,3 +330,31 @@ production sau khi có live credential, webhook secret và public HTTPS
 - Dùng database riêng cho development/test/production.
 - Đổi admin password mẫu trước khi chia sẻ hoặc deploy.
 - Không đưa production payment credential vào môi trường local.
+
+## Cập nhật mới & Hướng dẫn khi Pull / Clone (Sprint Update)
+
+Khi clone mới hoặc pull code mới nhất về máy, cần thực hiện thêm các bước sau:
+
+### 1. Cài đặt các thư viện mới bổ sung
+Dự án đã tích hợp thêm các thư viện phục vụ xuất báo cáo thống kê Excel và PDF:
+```bash
+npm install
+# Hoặc cài cụ thể: npm install exceljs pdfkit @types/pdfkit
+```
+
+### 2. Chạy Seeder dữ liệu mở rộng (Rich Store Data)
+Để storefront có đầy đủ 62 sản phẩm chất lượng cao (đầy đủ đa ảnh, bảng màu HEX, size, giảm giá compareAtPrice) và 5 bài viết chuyên mục Tạp chí (The Studio Journal), chạy lệnh:
+```bash
+node scripts/seed-rich-store.js
+```
+*(Script an toàn để chạy nhiều lần, sử dụng upsert theo slug).*
+
+### 3. Các API Module mới bổ sung
+- **`GET /articles` & `GET /articles/:slug`**: Danh sách và chi tiết bài viết tạp chí thời trang.
+- **`GET /audit-logs`**: Nhật ký hoạt động hệ thống (yêu cầu AdminGuard).
+- **`GET /settings`, `GET /settings/:key`, `PUT /settings/:key`**: Cấu hình hệ thống động (maintenance mode, max file size...).
+- **`GET /notifications`, `PATCH /notifications/:id/read`, `PATCH /notifications/read-all`**: Trung tâm thông báo người dùng.
+- **`GET /admin/analytics/export/excel` & `/export/pdf`**: Xuất báo cáo thống kê dashboard.
+- **`PATCH /users/:id`**: Khóa / mở khóa tài khoản và cập nhật vai trò người dùng (AdminGuard).
+- **Email tự động**: Tích hợp gửi email xác nhận đơn hàng tự động qua `MailService` ngay khi checkout thành công.
+

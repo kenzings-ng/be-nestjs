@@ -7,6 +7,7 @@ import { Product, ProductSchema } from '../products/schema/product.schema';
 import { CartsModule } from '../carts/carts.module';
 import { PromotionsModule } from '../promotions/promotions.module';
 import { TransactionsModule } from '../transactions/transactions.module';
+import { MailModule } from '../mail/mail.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { User, UserSchema } from '../users/schema/user.schema';
 import { PaymentWebhooksController } from './payment-webhooks.controller';
@@ -27,6 +28,7 @@ import { PaymentWebhooksController } from './payment-webhooks.controller';
     TransactionsModule,
     // Credentials, adapter registry and webhook idempotency storage.
     PaymentsModule,
+    MailModule,
   ],
   controllers: [OrdersController, PaymentWebhooksController],
   providers: [OrdersService],

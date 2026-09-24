@@ -14,6 +14,12 @@ import { CartsModule } from './modules/carts/carts.module';
 import { PromotionsModule } from './modules/promotions/promotions.module';
 import { ContactModule } from './modules/contact/contact.module';
 import { AdminAnalyticsModule } from './modules/admin-analytics/admin-analytics.module';
+import { AuditLogModule } from './modules/audit-log/audit-log.module';
+import { SettingsModule } from './modules/settings/settings.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { ArticlesModule } from './modules/articles/articles.module';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { AuditLogInterceptor } from './modules/audit-log/audit-log.interceptor';
 
 @Module({
   imports: [
@@ -34,6 +40,16 @@ import { AdminAnalyticsModule } from './modules/admin-analytics/admin-analytics.
     PromotionsModule,
     ContactModule,
     AdminAnalyticsModule,
+    AuditLogModule,
+    SettingsModule,
+    NotificationsModule,
+    ArticlesModule,
   ],
+  providers: [
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditLogInterceptor,
+    },
+  ]
 })
 export class AppModule {}

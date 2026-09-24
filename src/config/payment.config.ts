@@ -12,4 +12,10 @@ export default registerAs('payment', () => ({
     process.env.PAYMENT_SANDBOX_URL ?? 'https://payment-sandbox.comesh.xyz',
   productionUrl:
     process.env.PAYMENT_PRODUCTION_URL ?? 'https://payment.comesh.xyz',
+  glodipaySandboxUrl:
+    process.env.GLODIPAY_SANDBOX_URL ??
+    'https://payment-sandbox.gpayprocessing.com',
+  glodipayProductionUrl:
+    process.env.GLODIPAY_PRODUCTION_URL ??
+    'https://payment.gpayprocessing.com',
 }));

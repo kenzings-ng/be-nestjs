@@ -9,17 +9,19 @@ import { Model } from 'mongoose';
 import { Transaction } from '../transactions/schema/transaction.schema';
 import { CreatePaymentCredentialDto } from './dto/create-payment-credential.dto';
 import { UpdatePaymentCredentialDto } from './dto/update-payment-credential.dto';
-import { PaymentEnvironment } from './payment.types';
+import { GatewayPaymentMethod, PaymentEnvironment } from './payment.types';
 import { PaymentCredential } from './schema/payment-credential.schema';
 
 export type SafePaymentCredential = Omit<Record<string, unknown>, 'keys'> & {
   id: string;
   provider: string;
+  alias?: string;
   environment: string;
   paymentMethods: string[];
   cardBrands: string[];
   currency: string;
   isActive: boolean;
+  maxPaymentAttempts?: number;
   createdAt?: Date;
   updatedAt?: Date;
 };
@@ -170,6 +172,20 @@ export class PaymentCredentialsService {
       .exec();
   }
 
+  /** Returns active card-supporting credentials for environment, including keys for backend routing. */
+  async findActiveCardCredentials(
+    environment?: PaymentEnvironment,
+  ): Promise<PaymentCredential[]> {
+    return this.paymentCredentialModel
+      .find({
+        isActive: true,
+        paymentMethods: GatewayPaymentMethod.CARD,
+        ...(environment ? { environment } : {}),
+      })
+      .select('+keys')
+      .exec();
+  }
+
   private async findByIdOrThrow(
     id: string,
     includeKeys = false,
@@ -187,11 +203,13 @@ export class PaymentCredentialsService {
     return {
       id: credential._id.toString(),
       provider: credential.provider,
+      alias: credential.alias,
       environment: credential.environment,
       paymentMethods: credential.paymentMethods,
       cardBrands: credential.cardBrands,
       currency: credential.currency,
       isActive: credential.isActive,
+      maxPaymentAttempts: credential.maxPaymentAttempts,
       createdAt: (credential as unknown as { createdAt?: Date }).createdAt,
       updatedAt: (credential as unknown as { updatedAt?: Date }).updatedAt,
     };

@@ -45,4 +45,17 @@ export class PaymentWebhooksController {
     await this.ordersService.handleComeshWebhook(timestamp, signature, rawBody);
     return 'SUCCESS';
   }
+
+  /**
+   * GlodiPay IPN notification endpoint.
+   * Responds with { "returnCode": "100", "description": "Received" } as required by documentation.
+   */
+  @Post('webhooks/glodipay')
+  @HttpCode(200)
+  @ApiExcludeEndpoint()
+  async glodipay(
+    @Body() body: any,
+  ): Promise<{ returnCode: string; description: string }> {
+    return this.ordersService.handleGlodiPayWebhook(body);
+  }
 }

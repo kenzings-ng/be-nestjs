@@ -210,4 +210,15 @@ export class MailService {
     });
     this.logger.log(`Email sent to ${to}: ${subject}`);
   }
+
+  async sendOrderConfirmation(to: string, orderDetails: any) {
+    const html = this.renderEmail({
+      eyebrow: 'Order Confirmation',
+      heading: 'Your order is confirmed',
+      bodyHtml: `Thank you for your order! Your order ID is ${orderDetails.id}.`,
+      ctaLabel: 'View Order',
+      link: `http://localhost:4200/orders/${orderDetails.id}`
+    });
+    await this.send(to, `Order Confirmation #${orderDetails.id}`, html, `Thank you for your order! ID: ${orderDetails.id}`);
+  }
 }

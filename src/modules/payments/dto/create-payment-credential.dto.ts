@@ -3,12 +3,15 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsInt,
   IsNotEmpty,
   IsObject,
   IsOptional,
   IsString,
   Length,
   Matches,
+  Max,
+  Min,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import {
@@ -27,6 +30,13 @@ export class CreatePaymentCredentialDto {
   })
   @Transform(({ value }: { value: string }) => value?.trim().toLowerCase())
   provider!: string;
+
+  /** Custom display name for customer-facing checkout UI (e.g. "Credit / Debit Card"). */
+  @IsOptional()
+  @IsString()
+  @Length(1, 100)
+  @Transform(({ value }: { value: string }) => value?.trim())
+  alias?: string;
 
   @IsOptional()
   @IsEnum(PaymentEnvironment)
@@ -57,4 +67,10 @@ export class CreatePaymentCredentialDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(10)
+  maxPaymentAttempts?: number;
 }

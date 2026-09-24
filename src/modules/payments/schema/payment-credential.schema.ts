@@ -20,6 +20,10 @@ export class PaymentCredential extends Document {
   @Prop({ required: true, lowercase: true, trim: true, index: true })
   provider!: string;
 
+  /** Custom display name for customer-facing checkout UI (e.g. "Credit / Debit Card"). */
+  @Prop({ required: false, trim: true })
+  alias?: string;
+
   @Prop({
     type: String,
     enum: PaymentEnvironment,
@@ -49,6 +53,10 @@ export class PaymentCredential extends Document {
 
   @Prop({ default: true, index: true })
   isActive!: boolean;
+
+  /** Maximum retry/payment attempts permitted when single processor is enabled (default: 3). */
+  @Prop({ type: Number, required: false, min: 1, max: 10, default: 3 })
+  maxPaymentAttempts?: number;
 }
 
 export const PaymentCredentialSchema =

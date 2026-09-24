@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { User, UserRole } from './schema/user.schema';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { AdminUpdateUserDto } from './dto/admin-update-user.dto';
 
 // User data safe to return to clients (no password / tokens).
 export interface PublicUser {
@@ -11,6 +12,7 @@ export interface PublicUser {
   name: string;
   role: UserRole;
   isVerified: boolean;
+  isLocked?: boolean;
   profile: User['profile'];
   createdAt?: Date;
   updatedAt?: Date;
@@ -105,6 +107,14 @@ export class UsersService {
     return this.toPublicUser(user);
   }
 
+  async adminUpdate(id: string, dto: AdminUpdateUserDto): Promise<PublicUser> {
+    const user = await this.userModel.findById(id).exec();
+    if (!user) throw new NotFoundException('Không tìm thấy người dùng');
+    if (dto.role !== undefined) user.role = dto.role;
+    if (dto.isLocked !== undefined) user.isLocked = dto.isLocked;
+    await user.save();
+    return this.toPublicUser(user);
+  }
   private toPublicUser(user: User): PublicUser {
     return {
       id: user._id,
@@ -112,6 +122,7 @@ export class UsersService {
       name: user.name,
       role: user.role,
       isVerified: user.isVerified,
+      isLocked: user.isLocked,
       profile: user.profile ?? {},
       createdAt: (user as unknown as { createdAt?: Date }).createdAt,
       updatedAt: (user as unknown as { updatedAt?: Date }).updatedAt,
