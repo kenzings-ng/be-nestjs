@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -13,6 +14,7 @@ import { AdminGuard } from '../auth/guards/admin.guard';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { ProductQueryDto } from './dto/product-query.dto';
 
 @ApiTags('products')
 @ApiBearerAuth('access-token')
@@ -27,10 +29,10 @@ export class ProductsController {
     return this.productsService.create(createProductDto);
   }
 
-  // Public: anyone can browse products
+  // Public: anyone can browse products. Search/filter/sort/pagination via query params.
   @Get()
-  findAll() {
-    return this.productsService.findAll();
+  findAll(@Query() query: ProductQueryDto) {
+    return this.productsService.findAll(query);
   }
 
   // Public: browse products by category slug. Khai báo trước ':slug' là cố ý.

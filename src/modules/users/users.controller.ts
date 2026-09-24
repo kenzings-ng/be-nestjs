@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Patch, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { AdminUpdateUserDto } from './dto/admin-update-user.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -10,6 +11,11 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 @ApiBearerAuth('access-token')
 @Controller('users')
 export class UsersController {
+  @Patch(':id')
+  @UseGuards(AdminGuard)
+  adminUpdate(@Param('id') id: string, @Body() dto: AdminUpdateUserDto) {
+    return this.usersService.adminUpdate(id, dto);
+  }
   constructor(private readonly usersService: UsersService) {}
 
   // The current user's own profile.

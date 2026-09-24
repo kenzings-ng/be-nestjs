@@ -4,11 +4,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, QueryFilter } from 'mongoose';
+import { PaginatedResult } from '../../common/pagination';
 import { Category } from '../categories/schema/category.schema';
 import { Product } from './schema/product.schema';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { ProductQueryDto, ProductSort } from './dto/product-query.dto';
 
 /**
  * Sản phẩm được định danh qua `slug` ở mọi route — slug thân thiện URL/SEO và
@@ -27,8 +29,41 @@ export class ProductsService {
     return this.productModel.create(createProductDto);
   }
 
-  findAll(): Promise<Product[]> {
-    return this.productModel.find().populate('categoryId', 'title slug').exec();
+  async findAll(query: ProductQueryDto = new ProductQueryDto()): Promise<PaginatedResult<Product>> {
+    const page = query.page && query.page > 0 ? query.page : 1;
+    const limit = query.limit && query.limit > 0 ? query.limit : 20;
+
+    const filter: QueryFilter<Product> = {};
+    if (query.search) {
+      filter.name = { $regex: escapeRegex(query.search), $options: 'i' };
+    }
+    if (query.categoryId) {
+      filter.categoryId = query.categoryId;
+    }
+    if (query.minPrice != null || query.maxPrice != null) {
+      filter.price = {};
+      if (query.minPrice != null) filter.price.$gte = query.minPrice;
+      if (query.maxPrice != null) filter.price.$lte = query.maxPrice;
+    }
+
+    const [items, total] = await Promise.all([
+      this.productModel
+        .find(filter)
+        .populate('categoryId', 'title slug')
+        .sort(resolveSort(query.sort))
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .exec(),
+      this.productModel.countDocuments(filter).exec(),
+    ]);
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    };
   }
 
   async findOne(slug: string): Promise<Product> {
@@ -84,4 +119,23 @@ export class ProductsService {
       throw new ConflictException(`Slug "${slug}" đã được dùng`);
     }
   }
+}
+
+function resolveSort(sort?: ProductSort): Record<string, 1 | -1> {
+  switch (sort) {
+    case 'price-asc':
+      return { price: 1 };
+    case 'price-desc':
+      return { price: -1 };
+    case 'name-asc':
+      return { name: 1 };
+    case 'newest':
+    default:
+      return { createdAt: -1 };
+  }
+}
+
+/** Escape regex metacharacters so `search` is treated as a literal substring. */
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

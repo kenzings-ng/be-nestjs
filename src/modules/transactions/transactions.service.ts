@@ -151,6 +151,19 @@ export class TransactionsService {
       .exec();
   }
 
+  findGatewayPaymentByOrderRef(
+    provider: string,
+    orderRef: string,
+  ): Promise<Transaction | null> {
+    return this.transactionModel
+      .findOne({
+        provider: provider.toLowerCase(),
+        merchantReference: orderRef,
+        type: TransactionType.PAYMENT,
+      })
+      .exec();
+  }
+
   findGatewayRefundById(
     provider: string,
     gatewayRefundId: string,

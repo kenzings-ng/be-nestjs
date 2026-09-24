@@ -6,6 +6,7 @@ import { Product, ProductSchema } from '../products/schema/product.schema';
 import { User, UserSchema } from '../users/schema/user.schema';
 import { AdminAnalyticsController } from './admin-analytics.controller';
 import { AdminAnalyticsService } from './admin-analytics.service';
+import { AdminAnalyticsExportService } from './admin-analytics-export.service';
 
 @Module({
   imports: [
@@ -17,6 +18,6 @@ import { AdminAnalyticsService } from './admin-analytics.service';
     ]),
   ],
   controllers: [AdminAnalyticsController],
-  providers: [AdminAnalyticsService],
+  providers: [AdminAnalyticsService, AdminAnalyticsExportService],
 })
 export class AdminAnalyticsModule {}

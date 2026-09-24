@@ -104,6 +104,10 @@ export class Order extends Document {
 
   @Prop()
   shippingAddress?: string;
+
+  /** Number of payment attempts made for this order. */
+  @Prop({ type: Number, default: 0 })
+  paymentAttempts?: number;
 }
 
 export const OrderSchema = SchemaFactory.createForClass(Order);
